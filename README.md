@@ -115,9 +115,15 @@ The app includes a public, read-only [MCP](https://modelcontextprotocol.io) serv
 Server URL: **`https://designer.3rdgen.io/api/mcp`** (no key or sign-in).
 
 - **Claude** (claude.ai or desktop): Settings → Connectors → Add custom connector → paste the URL.
-- **Claude Code:** `claude mcp add --transport http minisplit-designer https://designer.3rdgen.io/api/mcp`
+- **Claude Code:** `claude mcp add --scope user --transport http minisplit-designer https://designer.3rdgen.io/api/mcp` (`--scope user` makes it available in every project; start a new session afterwards)
 - **ChatGPT:** add it as a custom connector/app (developer mode) with the URL and no authentication.
 - **Anything else:** any client that supports Streamable HTTP.
+
+Try asking:
+
+> Will an MXZ-3D24NL run two 9k wall units on 30 and 45 ft lines, 8 ft above the condenser? How much refrigerant do I add?
+
+The AI looks up the units, runs the same checks as the designer and answers with pass/fail, line sets, the additional charge and the BOM. It asks for line lengths, heights and room sizes instead of guessing them.
 
 Tools: `list_outdoor_units`, `list_indoor_units` and `evaluate_design`. See the [MCP guide](docs/MCP.md) for details and self-hosting.
 

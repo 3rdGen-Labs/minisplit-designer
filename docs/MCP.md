@@ -16,7 +16,7 @@ No AI model runs inside the server; your client supplies the AI.
 ## Connecting
 
 - **Claude** (claude.ai or desktop): Settings → Connectors → Add custom connector → paste the URL.
-- **Claude Code:** `claude mcp add --transport http minisplit-designer https://designer.3rdgen.io/api/mcp`
+- **Claude Code:** `claude mcp add --scope user --transport http minisplit-designer https://designer.3rdgen.io/api/mcp`
 - **ChatGPT:** add a custom connector/app in developer mode with the URL and no authentication.
 - **Other clients:** any client that supports Streamable HTTP.
 
