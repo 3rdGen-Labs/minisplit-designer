@@ -331,7 +331,7 @@ export function correctedCapacity(ctx: Ctx, input?: DesignConditions): CapacityR
     const conn = connectionFactor(odu, mode, n, notes);
 
     if (style === "old") {
-      const temps = ctx.placed.map((x) => temp(inT, outT, true));
+      const temps = ctx.placed.map(() => temp(inT, outT, true));
       const weights = ctx.placed.map(rated);
       const wsum = weights.reduce((s, w) => s + w, 0);
       tempSys = wsum ? temps.reduce((s, t, i) => s + t * weights[i], 0) / wsum : temps[0];

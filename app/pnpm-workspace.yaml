@@ -2,3 +2,6 @@ allowBuilds:
   sharp: true
   unrs-resolver: true
   esbuild: true
+overrides:
+  postcss: ^8.5.30
+  sharp: ^0.35.5

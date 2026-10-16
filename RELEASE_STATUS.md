@@ -13,7 +13,7 @@ M & S single-zone, P-Series, MXZ, and single-phase residential Smart Multi. Thre
 - Additional refrigerant charge is unavailable for some outdoor units; missing piping inputs can leave charge checks at factory charge only.
 - City Multi/VRF, load calculations, partial-load/diversity capacity modes and sensible capacity are outside scope.
 - DSB import assumptions need verification against representative actual project files. The missing proprietary template test is skipped; synthetic importer tests run.
-- Current HTTP APIs have minimal input validation and no application authentication or rate limiting. Hosting limits and fuller request validation are needed for an advertised public API.
+- The evaluation API checks request size and shape and returns an error instead of crashing on malformed designs. There is no authentication; rate limiting is left to the host's firewall.
 
 The test suite does not establish engineering certification or agreement with current manufacturer documentation. Before general release, compare representative real designs and boundary cases against current manufacturer tools/manuals: accepted/rejected combinations, controls, accessories, piping, charge, R454B room/mounting requirements, capacities and BOM. Report discrepancies and keep verification notices visible. No claim is made that every manufacturer rule is implemented.
 
@@ -25,7 +25,7 @@ The bundled equipment JSON is a transformed manufacturer-reference dataset. Deco
 
 The reference snapshot was first recorded on October 15, 2026. The bundled US-market METUS data reports catalog database version 5.14.0.15. This date identifies the recorded snapshot, not a guarantee that every manufacturer specification or rule was current on that day. The app does not automatically update its catalog.
 
-The recorded production dependency audit reports 7 advisories (5 high, 2 moderate), involving sharp and PostCSS. These findings have not been resolved by the documentation update; review applicability and update dependencies before deploying a fork. Third-party package and asset terms remain applicable.
+Next.js was updated to 15.5.28 and PostCSS/sharp are pinned to patched versions through pnpm overrides; `pnpm audit --prod` reported no known vulnerabilities on October 16, 2026. Re-run the audit before deploying a fork. Third-party package and asset terms remain applicable.
 
 ## Software checks on this fresh snapshot
 

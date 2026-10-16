@@ -743,7 +743,10 @@ function Toolbar(props: {
         </a>
         <span className="header-divider" aria-hidden="true" />
         </>}
-        <h1 className="software-name">{site.name} <span className="software-version">{site.version}</span></h1>
+        <div className="min-w-0">
+          <h1 className="software-name">{site.name} <span className="software-version">{site.version}</span></h1>
+          {site.tagline && <p className="software-tagline">{site.tagline}</p>}
+        </div>
       </div>
       <div className="header-actions flex flex-wrap items-center gap-2">
         <button className="toolbar-button" onClick={props.onAddSystem}>New system</button>

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { appPath, site } from "@/lib/site";
 
@@ -14,9 +15,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: site.name,
-  description: "Independent ductless system planning and estimating.",
-  robots: { index: false, follow: false },
+  metadataBase: new URL(site.url),
+  title: site.title,
+  description: site.description,
+  alternates: { canonical: appPath("/") },
+  robots: { index: site.indexable, follow: site.indexable },
+  openGraph: { type: "website", url: appPath("/"), siteName: site.name, title: site.name, description: site.description },
+  twitter: { card: "summary_large_image", title: site.name, description: site.description },
   appleWebApp: { capable: true, title: site.name, statusBarStyle: "black-translucent" },
   icons: { icon: appPath("/icons/icon-192.png"), apple: appPath("/icons/apple-touch-icon.png") },
 };
@@ -39,6 +44,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         {children}
+        {process.env.VERCEL === "1" && <Analytics />}
       </body>
     </html>
   );

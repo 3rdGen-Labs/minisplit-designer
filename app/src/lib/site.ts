@@ -6,6 +6,15 @@ export const appPath = (path: string) => `${basePath}${path}`;
 export const site = {
   name: "Mini-Split Designer",
   version: "v1",
+  /** Shown under the name in the header. Set to "" to hide. */
+  tagline: "System builder for residential Mitsubishi Electric model numbers",
+  /** Public URL of this deployment: canonical links, sitemap and social previews. */
+  url: process.env.NEXT_PUBLIC_SITE_URL || "https://designer.3rdgen.io",
+  /** Let search engines index this deployment. Turn off for private or staging copies. */
+  indexable: true,
+  /** Browser tab and search result title. */
+  title: "Mini-Split Designer: Free Mitsubishi Electric Ductless System Builder",
+  description: "Free browser-based builder for residential Mitsubishi Electric ductless systems: pick outdoor and indoor units, check compatibility, line sets, controls and accessories, and export a bill of materials.",
   owner: "3rdGen Labs",
   header: {
     enabled: true,
