@@ -4,7 +4,7 @@ import { createContext, useContext, useCallback, useEffect, useId, useMemo, useR
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
+  MouseSensor,
   TouchSensor,
   useDraggable,
   useDroppable,
@@ -353,8 +353,9 @@ export default function Designer({ palette }: { palette: Palette }) {
   };
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
+    // Mouse drags right away. Touch: swipe scrolls, tap opens the picker, long-press drags (tablets).
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 350, tolerance: 5 } }),
   );
 
   const onDragStart = (e: DragStartEvent) => setDragging(e.active.data.current as DragItem);
@@ -960,7 +961,10 @@ function EquipmentLibrary(props: TileShelfProps) {
       <EquipmentGroup title="Indoor units" kind="indoor" open={indoorOpen} onToggle={() => setIndoorOpen((open) => !open)}>
         {props.hasOdu ? (
           <>
-            <p className="px-3 pt-3 text-[11px] leading-relaxed text-[var(--muted)]">Drag onto the canvas or click to choose a compatible indoor unit.</p>
+            <p className="px-3 pt-3 text-[11px] leading-relaxed text-[var(--muted)]">
+              <span className="hint-mouse">Drag onto the canvas or click to choose a compatible indoor unit.</span>
+              <span className="hint-touch">Tap a type to choose a compatible indoor unit.</span>
+            </p>
             <div className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-3 lg:grid-cols-2">
               {types.map(([type, count]) => <Tile key={type} item={{ kind: "idu", typeName: type }} label={type} count={count} onTap={props.onTap} />)}
             </div>
@@ -1328,7 +1332,7 @@ function Canvas(props: {
           <div className="mb-3 text-[10px] uppercase tracking-[0.22em] text-[var(--muted)]">Your canvas is ready</div>
           <h1 className="text-[24px] font-medium tracking-tight text-[var(--fg)]">Great systems start here.</h1>
           <p className="mt-3 text-[12px] leading-relaxed text-[var(--muted)]">Choose an outdoor unit from the library, then build your system around it.</p>
-          <div className="empty-hint mt-6 inline-flex items-center gap-2 rounded-full px-3 py-2 text-[11px] text-[var(--muted)]"><span aria-hidden="true">↖</span> Drag onto the canvas or tap to select</div>
+          <div className="empty-hint mt-6 inline-flex items-center gap-2 rounded-full px-3 py-2 text-[11px] text-[var(--muted)]"><span aria-hidden="true">↖</span> <span className="hint-mouse">Drag onto the canvas or click to select</span><span className="hint-touch">Tap a unit type to add it</span></div>
         </div>
       ) : (
         <div className="flex flex-col items-center">
@@ -1396,7 +1400,7 @@ function Canvas(props: {
               iduRow(props.system.idus.map((p) => p.key))
             ))}
           <div className={`mt-6 rounded border-2 border-dashed px-6 py-4 text-center text-[var(--muted)] ${props.dragging?.kind === "idu" ? "border-[var(--accent)] text-[var(--accent)]" : "border-[var(--line)]"}`}>
-            {props.system.idus.length >= (props.odu.maxIdus || 1) ? `Max ${props.odu.maxIdus} indoor unit(s) for this outdoor unit` : "Drag indoor units here"}
+            {props.system.idus.length >= (props.odu.maxIdus || 1) ? `Max ${props.odu.maxIdus} indoor unit(s) for this outdoor unit` : <><span className="hint-mouse">Drag indoor units here</span><span className="hint-touch">Tap an indoor unit type to add a zone</span></>}
           </div>
         </div>
       )}

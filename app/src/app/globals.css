@@ -291,3 +291,10 @@ option { background: var(--field); color: var(--fg); }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .company-logo { filter: brightness(0) invert(1); }
 }
+
+/* Touch screens add units by tapping; mouse users can drag. */
+.hint-touch { display: none; }
+@media (hover: none) and (pointer: coarse) {
+  .hint-mouse { display: none; }
+  .hint-touch { display: inline; }
+}
