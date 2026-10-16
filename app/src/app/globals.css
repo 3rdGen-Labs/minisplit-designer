@@ -278,11 +278,11 @@ option { background: var(--field); color: var(--fg); }
   .labs-logo { width: 72px; height: 23px; }
   .header-divider { height: 20px; }
   .software-name { font-size: clamp(16px, 4.6vw, 20px); white-space: nowrap; }
-  .header-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px 44px; gap: 6px; margin: 0; }
+  .header-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px 44px 44px; gap: 6px; margin: 0; }
   .header-actions .toolbar-button { min-height: 44px; padding: 8px 6px; font-size: 12px; gap: 6px; }
   .header-actions .project-actions { min-width: 0; }
-  .header-actions .tutorial-button, .header-actions .settings-button { width: 44px; min-height: 44px; padding: 10px; }
-  .header-actions .tutorial-button svg, .header-actions .settings-button svg { width: 18px; height: 18px; }
+  .header-actions .tutorial-button, .header-actions .github-button, .header-actions .settings-button { width: 44px; min-height: 44px; padding: 10px; }
+  .header-actions .tutorial-button svg, .header-actions .github-button svg, .header-actions .settings-button svg { width: 18px; height: 18px; }
   .desktop-actions-label, .tutorial-label { display: none; }
   .mobile-actions-label { display: inline; }
 }

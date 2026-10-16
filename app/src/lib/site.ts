@@ -16,8 +16,10 @@ export const site = {
   title: "Mini-Split Designer: Free Mitsubishi Electric Ductless System Builder",
   description: "Free browser-based builder for residential Mitsubishi Electric ductless systems: pick outdoor and indoor units, check compatibility, line sets, controls and accessories, and export a bill of materials.",
   owner: "3rdGen Labs",
+  /** Source repository: header GitHub link and the footer "Report a problem" link. Set to "" to hide both. */
+  repo: "https://github.com/3rdGen-Labs/minisplit-designer",
   header: {
-    enabled: true,
+    enabled: false,
     name: "3rdGen Labs",
     url: "https://3rdgenlabs.com",
     logo: "/brand/3rdgen-labs-logo.png",

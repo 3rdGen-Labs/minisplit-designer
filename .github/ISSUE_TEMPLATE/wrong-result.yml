@@ -1,0 +1,38 @@
+name: Wrong result
+description: The designer gave a pairing, limit, charge, part number or BOM line that doesn't match the manual or Diamond System Builder.
+labels: ["wrong result"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for checking the designer's work. The more exact the numbers, the faster this gets fixed.
+  - type: input
+    id: odu
+    attributes:
+      label: Outdoor unit model
+      placeholder: MXZ-3C24NAHZ4-U1
+    validations:
+      required: true
+  - type: textarea
+    id: idus
+    attributes:
+      label: Indoor units and line lengths
+      description: One per line, with line length, height difference and room floor area if they matter.
+      placeholder: |
+        MSZ-GS09NA, 25 ft, +10 ft, 150 sq ft
+        SVZ-KP12NA, 40 ft, 0 ft
+    validations:
+      required: true
+  - type: textarea
+    id: designer
+    attributes:
+      label: What the designer said
+      description: The error, warning, number or BOM line you think is wrong. A screenshot helps.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What it should be, and where that comes from
+      description: Diamond System Builder output, install manual page, submittal, etc.
+    validations:
+      required: true
