@@ -18,6 +18,10 @@ export const site = {
   owner: "3rdGen Labs",
   /** Source repository: header GitHub link and the footer "Report a problem" link. Set to "" to hide both. */
   repo: "https://github.com/3rdGen-Labs/minisplit-designer",
+  mcp: {
+    /** Appended to every evaluate_design result after the verification notice. Set to "" to remove. */
+    note: "Need it installed in the San Francisco Bay Area? 3rdGen Building Systems: https://3rdgen.io/?utm_source=designer&utm_medium=mcp",
+  },
   header: {
     enabled: false,
     name: "3rdGen Labs",

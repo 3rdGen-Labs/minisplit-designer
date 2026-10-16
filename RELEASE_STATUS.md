@@ -1,6 +1,6 @@
 # V1 release notes
 
-This repository contains a fresh snapshot of the residential V1 reference tool. It includes the existing residential design/estimating UI, evaluation API, importer, original generic illustration source, and bundled equipment data. It does not include decompiled Mitsubishi source, research extracts, extraction tools, old Git history, deployment metadata, environment files, or a running MCP server.
+This repository contains a fresh snapshot of the residential V1 reference tool. It includes the existing residential design/estimating UI, evaluation API, importer, original generic illustration source, and bundled equipment data. It does not include decompiled Mitsubishi source, research extracts, extraction tools, old Git history, deployment metadata, or environment files. A public, read-only MCP server is included at `/api/mcp`.
 
 ## Scope
 

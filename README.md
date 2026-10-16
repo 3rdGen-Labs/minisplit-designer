@@ -108,7 +108,18 @@ curl http://localhost:3000/api/evaluate \
 
 Use the `SystemDesign` and `Evaluation` types in `app/src/lib/design.ts` for full requests and responses. Numeric equipment IDs come from the deployed catalog; do not assume IDs carry across dataset replacements. Include `/designer` in the request URL when hosting under that prefix. There is no public catalog-list HTTP endpoint in this checkout.
 
-**MCP is implemented on a separate branch of the original private development repository, not in this fresh repository.** This checkout has no `/api/mcp` route or MCP SDK dependency. See [the MCP guide](docs/MCP.md) for the branch's components, tools, setup, and what remains before integrating it. The web app does not require an AI client or MCP server to run.
+### Connect it to Claude, ChatGPT or another AI client (MCP)
+
+The app includes a public, read-only [MCP](https://modelcontextprotocol.io) server at `/api/mcp`. Point an MCP client at it and ask things like "will an MXZ-3D24NL run two 9k wall units on 30 and 45 ft lines, and how much refrigerant do I add?"
+
+Server URL: **`https://designer.3rdgen.io/api/mcp`** (no key or sign-in).
+
+- **Claude** (claude.ai or desktop): Settings → Connectors → Add custom connector → paste the URL.
+- **Claude Code:** `claude mcp add --transport http minisplit-designer https://designer.3rdgen.io/api/mcp`
+- **ChatGPT:** add it as a custom connector/app (developer mode) with the URL and no authentication.
+- **Anything else:** any client that supports Streamable HTTP.
+
+Tools: `list_outdoor_units`, `list_indoor_units` and `evaluate_design`. See the [MCP guide](docs/MCP.md) for details and self-hosting.
 
 ## Contributing
 
