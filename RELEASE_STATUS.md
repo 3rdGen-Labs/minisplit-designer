@@ -1,6 +1,6 @@
-# V1 release candidate
+# V1 release notes
 
-This is a new repository with fresh history for private review. It includes the existing residential design/estimating UI, evaluation API, importer, original generic illustration source, and bundled equipment data. It does not include decompiled Mitsubishi source, research extracts, extraction tools, old Git history, deployment metadata, environment files, or a running MCP server.
+This repository contains a fresh snapshot of the residential V1 reference tool. It includes the existing residential design/estimating UI, evaluation API, importer, original generic illustration source, and bundled equipment data. It does not include decompiled Mitsubishi source, research extracts, extraction tools, old Git history, deployment metadata, environment files, or a running MCP server.
 
 ## Scope
 
@@ -17,13 +17,15 @@ M & S single-zone, P-Series, MXZ, and single-phase residential Smart Multi. Thre
 
 The test suite does not establish engineering certification or agreement with current manufacturer documentation. Before general release, compare representative real designs and boundary cases against current manufacturer tools/manuals: accepted/rejected combinations, controls, accessories, piping, charge, R454B room/mounting requirements, capacities and BOM. Report discrepancies and keep verification notices visible. No claim is made that every manufacturer rule is implemented.
 
-## Public-release blockers
+## Maintainer review and reference data
 
-The equipment JSON remains derived from an extracted manufacturer database; removing raw extracts or decompiled code does not establish redistribution rights for these bundles. The engine was implemented from reverse-engineering notes, and its provenance still needs review. Review actual software terms and permissions with an IP lawyer. LICENSE_SCOPE.md excludes uncleared materials from the license grant. Keep this candidate private until the data/implementation review and asset ownership checks are resolved.
+The maintainer confirmed their review and approved public release on October 16, 2026. This records the maintainer's decision; it is not an independent legal opinion, manufacturer approval, or engineering certification.
 
-The current production dependency audit reports 7 advisories (5 high, 2 moderate), involving sharp and PostCSS. Resolve or document applicability of each against the final deployed dependency versions. Third-party package and asset terms remain applicable.
+The bundled equipment JSON is a transformed manufacturer-reference dataset. Decompiled manufacturer source, original installers, raw research extracts and extraction tools are not included. Source and implementation provenance remain documented in the original private development records. See `LICENSE_SCOPE.md` for the boundary between original project work and third-party rights.
 
-This candidate is suitable for reviewing a bounded V1 scope; it is not yet cleared for a public open source launch.
+The reference snapshot was first recorded on October 15, 2026. The bundled US-market METUS data reports catalog database version 5.14.0.15. This date identifies the recorded snapshot, not a guarantee that every manufacturer specification or rule was current on that day. The app does not automatically update its catalog.
+
+The recorded production dependency audit reports 7 advisories (5 high, 2 moderate), involving sharp and PostCSS. These findings have not been resolved by the documentation update; review applicability and update dependencies before deploying a fork. Third-party package and asset terms remain applicable.
 
 ## Software checks on this fresh snapshot
 

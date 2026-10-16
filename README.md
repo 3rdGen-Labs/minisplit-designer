@@ -1,6 +1,6 @@
 # Mini-Split Designer
 
-Plan ductless HVAC systems in your browser and put together a bill of materials. Choose outdoor and indoor units, lay out your system, enter piping and room details, and review compatibility, controls, accessories, and estimated quantities.
+Plan ductless HVAC systems using Mitsubishi Electric model numbers and put together a bill of materials in your browser. The catalog covers US-market M & S-Series, P-Series, MXZ, and single-phase Smart Multi equipment. Choose outdoor and indoor units, lay out your system, enter piping and room details, and review compatibility, controls, accessories, and estimated quantities.
 
 **[Open Mini-Split Designer →](https://designer.3rdgen.io)**
 
@@ -8,9 +8,13 @@ Plan ductless HVAC systems in your browser and put together a bill of materials.
 
 Built for the community. Use and customize the original project work, replace or remove the branding, and integrate the designer into your own website. No payment, donation, credit, or link back is required. Original work is licensed under [MIT-0](LICENSE); see [license scope](LICENSE_SCOPE.md) for the materials covered.
 
-**Private V1 preview.** See [release status and limitations](RELEASE_STATUS.md) before deploying or redistributing.
+**V1 community reference tool.** See [release notes and limitations](RELEASE_STATUS.md) before deploying or redistributing.
 
-This is an independent planning and estimating tool, unaffiliated with Mitsubishi Electric or its affiliates. Equipment names and trademarks belong to their owners. Verify designs against current manufacturer documentation with a qualified HVAC professional before quoting, ordering, or installing. A passing result is not manufacturer approval.
+Mitsubishi Electric equipment names and model numbers are used solely to identify the referenced equipment. All trademarks belong to their respective owners. This is an independent planning and estimating tool, not affiliated with, endorsed by, or sponsored by Mitsubishi Electric, Mitsubishi Electric Trane HVAC US, or their affiliates. Verify designs against current manufacturer documentation with a qualified HVAC professional before quoting, ordering, or installing. A passing result is not manufacturer approval.
+
+## Reference data snapshot
+
+**Snapshot recorded: October 15, 2026.** The bundled US-market reference data reports METUS catalog database version **5.14.0.15**. This is a fixed reference snapshot; the app does not automatically receive manufacturer catalog or rule updates. Check current manufacturer submittals and installation manuals before relying on a selection.
 
 ## Run it locally
 
