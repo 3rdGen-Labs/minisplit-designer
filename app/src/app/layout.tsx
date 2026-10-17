@@ -30,6 +30,9 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  // App-style layout: no pinch or double-tap zoom on phones.
+  maximumScale: 1,
+  userScalable: false,
   themeColor: "#1f4e8c",
 };
 

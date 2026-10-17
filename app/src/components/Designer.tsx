@@ -382,6 +382,13 @@ export default function Designer({ palette }: { palette: Palette }) {
     if (id === activeId) setActiveId(rest[0].id);
   };
 
+  // iOS Safari ignores user-scalable=no for pinches; cancelling its gesture events keeps the layout from zooming.
+  useEffect(() => {
+    const stop = (e: Event) => e.preventDefault();
+    for (const name of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(name, stop, { passive: false });
+    return () => { for (const name of ["gesturestart", "gesturechange", "gestureend"]) document.removeEventListener(name, stop); };
+  }, []);
+
   // Delete / Backspace removes the selected unit, unless the user is typing or a dialog is open.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

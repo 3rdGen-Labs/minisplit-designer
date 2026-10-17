@@ -348,3 +348,6 @@ option { background: var(--field); color: var(--fg); }
 .add-idu-slot { display: block; min-width: 220px; cursor: pointer; }
 .add-idu-slot:hover { border-color: var(--accent); color: var(--accent); }
 .add-here-button { margin-top: 2px; padding: 4px 10px; border-radius: 6px; background: var(--accent); color: #fff; font-size: 12px; font-weight: 600; }
+
+/* No double-tap zoom on touch screens. */
+html { touch-action: manipulation; }
