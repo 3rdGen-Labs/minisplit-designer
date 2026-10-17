@@ -299,6 +299,31 @@ export default function Designer({ palette }: { palette: Palette }) {
     setPropertyNavigation(destination);
   };
 
+  // Can another indoor unit go on? Trial-add the smallest compatible one: if the engine rejects even that,
+  // nothing bigger fits either, and the canvas shows why instead of an "+ Add indoor unit" that can't work.
+  const [addBlocked, setAddBlocked] = useState<string | null>(null);
+  useEffect(() => {
+    // Keep the last answer while re-checking, so the slot doesn't flicker on every edit.
+    const single = active.system === "MandS" || active.system === "P";
+    if (!odu || single || active.idus.length === 0 || active.idus.length >= (odu.maxIdus || 1)) return setAddBlocked(null);
+    if (!evaluation || evaluation.oduId !== odu.id) return;
+    const compat = new Set(evaluation.compatibleIduIds);
+    const smallest = palette.idus
+      .filter((i) => compat.has(i.id) && (active.showLegacy || !i.legacy))
+      .sort((a, b) => a.size - b.size || a.coolingBtu - b.coolingBtu)[0];
+    if (!smallest) return;
+    const ctrl = new AbortController();
+    const timer = setTimeout(async () => {
+      const trial: SystemDesign = { ...active, idus: [...active.idus, { key: "probe", iduId: smallest.id, room: "Probe" }] };
+      const after = await fetchEvaluation(trial, settings, ctrl.signal);
+      if (!after || ctrl.signal.aborted) return;
+      const had = new Set(evaluation.issues.filter((x) => x.severity === "error").map((x) => `${x.code}|${x.message}`));
+      const added = after.issues.find((x) => x.severity === "error" && !x.incomplete && !had.has(`${x.code}|${x.message}`));
+      setAddBlocked(added ? added.message : null);
+    }, 300);
+    return () => { clearTimeout(timer); ctrl.abort(); };
+  }, [active, odu, evaluation, palette.idus, settings]);
+
   // Single zone pairs 1:1: once the evaluation for a newly placed ODU arrives, drop in its match.
   const autoPick = useRef<{ systemId: string; odu: PaletteOdu } | null>(null);
   useEffect(() => {
@@ -553,6 +578,7 @@ export default function Designer({ palette }: { palette: Palette }) {
               onRemoveIdu={(key) => updateSystem(active.id, (s) => ({ ...s, idus: s.idus.filter((i) => i.key !== key) }))}
               onPatch={(patch) => updateSystem(active.id, (s) => ({ ...s, ...patch }))}
               onPatchIdu={(key, patch) => updateSystem(active.id, (s) => ({ ...s, idus: s.idus.map((i) => (i.key === key ? { ...i, ...patch } : i)) }))}
+              addBlocked={addBlocked}
               onAddOdu={() => setChooser("odu")}
               onAddIdu={(target) => { setAddTarget(target ?? null); setChooser("idu"); }}
             />
@@ -1323,6 +1349,8 @@ function Canvas(props: {
   onPatchIdu: (key: string, patch: Partial<IduPlacement>) => void;
   onAddOdu: () => void;
   onAddIdu: (target?: { box: number; port: string }) => void;
+  /** Why no further indoor unit fits (from a trial add), or null when one does. */
+  addBlocked?: string | null;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: "canvas" });
   const singleZone = props.system.system === "MandS" || props.system.system === "P";
@@ -1362,6 +1390,9 @@ function Canvas(props: {
   };
 
   const atMax = !!props.odu && props.system.idus.length >= (props.odu.maxIdus || 1);
+  const full = atMax || !!props.addBlocked;
+  const fullTitle = atMax ? "Max indoor units" : /port/i.test(props.addBlocked ?? "") ? "No open ports" : /capacity|btu|combination/i.test(props.addBlocked ?? "") ? "Max capacity reached" : "Can't add another indoor unit";
+  const fullDetail = atMax ? `${props.system.idus.length} of ${props.odu?.maxIdus} indoor units on this outdoor unit` : props.addBlocked;
 
   // An open, uncapped branch-box port already offers "+ Add here", so the bottom "+ Add indoor unit" would be a second way to do the same thing.
   const hasOpenPort = !!layout?.boxes.some((b, i) => portSlots(b.iduKeys, b.ports, i).some((slot) => slot.port && !slot.key && !cappedOn(i).includes(slot.port)));
@@ -1394,7 +1425,7 @@ function Canvas(props: {
                   Cap
                 </label>
                 <span>{capped ? "Capped · not used" : "Open"}</span>
-                {!capped && !atMax && (
+                {!capped && !full && (
                   <button className="add-here-button" onClick={(e) => { e.stopPropagation(); props.onAddIdu({ box, port }); }}>+ Add here</button>
                 )}
               </div>
@@ -1519,9 +1550,14 @@ function Canvas(props: {
             ) : (
               iduRow(props.system.idus.map((p) => p.key))
             ))}
-          {hasOpenPort && !atMax ? null : atMax || (singleZone && props.system.idus.length > 0) ? (
-            <div className="drop-hint mt-6 rounded border-2 border-dashed border-[var(--line)] px-6 py-4 text-center text-[var(--muted)]">
-              {singleZone ? "Single zone: one indoor unit" : `Max ${props.odu.maxIdus} indoor unit(s) for this outdoor unit`}
+          {hasOpenPort && !full ? null : full || (singleZone && props.system.idus.length > 0) ? (
+            <div className="drop-hint system-full mt-6 rounded border-2 border-dashed border-[var(--line)] px-6 py-4 text-center text-[var(--muted)]">
+              {singleZone ? "Single zone: one indoor unit" : (
+                <>
+                  <span className="block text-[15px] font-semibold text-[var(--fg)]">{fullTitle}</span>
+                  {fullDetail && <span className="mt-0.5 block text-[11px]">{fullDetail}</span>}
+                </>
+              )}
             </div>
           ) : (
             <button
