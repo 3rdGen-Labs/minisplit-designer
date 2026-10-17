@@ -18,9 +18,9 @@ Mitsubishi Electric equipment names and model numbers are used solely to identif
 
 ## Design locations (weather)
 
-Pick a California city under **Properties → Capacity at design conditions** and the designer fills in that location's heating and cooling design temperatures and elevation, then shows each system's corrected capacity there. Heating is entered as a normal (dry bulb) temperature plus humidity; the app calculates the outdoor wet bulb that heat pump capacity is rated on.
+Pick a state and city under **Properties → Capacity at design conditions** and the designer fills in that location's heating and cooling design temperatures and elevation, then shows each system's corrected capacity there. Heating is entered as a normal (dry bulb) temperature plus humidity; the app calculates the outdoor wet bulb that heat pump capacity is rated on.
 
-The locations are 104 California airports. Their design days are computed by this project from NOAA's public-domain hourly weather records (ISD-Lite, 2011–2024): the 99% heating and 1% cooling dry bulbs over all hours, with the mean coincident wet bulb. They are not copied from ASHRAE tables, and because recent winters are milder, heating values often run 1–3 °F warmer than older published figures. Enter your own temperatures when a jurisdiction or Manual J calculation specifies them. `pnpm weather` (in `app/`) downloads the records and rebuilds `src/data/design-locations.json`; pass `--state OR` (etc.) to build another state.
+The locations are 1,834 US airports in all 50 states (plus Puerto Rico and the US Virgin Islands). Their design days are computed by this project from NOAA's public-domain hourly weather records (ISD-Lite, 2011–2024): the 99% heating and 1% cooling dry bulbs over all hours, with the mean coincident wet bulb. They are not copied from ASHRAE tables, and because recent winters are milder, heating values often run 1–3 °F warmer than older published figures. Enter your own temperatures when a jurisdiction or Manual J calculation specifies them. `pnpm weather` (in `app/`) downloads the records and rebuilds `src/data/design-locations.json` (`--state CA,OR` limits it to some states). The table loads only when the capacity section opens, so it doesn't slow the first page load.
 
 ## Run it locally
 

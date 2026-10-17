@@ -22,11 +22,12 @@ describe("psychrometrics", () => {
 
 describe("design locations", () => {
   const byId = new Map(designWeather.locations.map((l) => [l.id, l]));
-  it("has California airports with plausible design days", () => {
-    expect(designWeather.locations.length).toBeGreaterThan(90);
+  it("covers every state with plausible design days", () => {
+    expect(designWeather.locations.length).toBeGreaterThan(1500);
+    expect(new Set(designWeather.locations.map((l) => l.state)).size).toBeGreaterThanOrEqual(50);
     for (const l of designWeather.locations) {
       expect(l.heatDbF).toBeLessThan(l.coolDbF);
-      expect(l.heatDbF).toBeGreaterThan(-20);
+      expect(l.heatDbF).toBeGreaterThan(-50);
       expect(l.coolDbF).toBeLessThan(125);
     }
   });
@@ -35,5 +36,9 @@ describe("design locations", () => {
     expect(heat("KTVL")).toBeLessThan(heat("KSAC"));
     expect(heat("KSAC")).toBeLessThan(heat("KSFO"));
     expect(byId.get("KPSP")!.coolDbF).toBeGreaterThan(byId.get("KSFO")!.coolDbF);
+    expect(heat("KMSP")).toBeLessThan(heat("KDEN"));
+    expect(heat("KDEN")).toBeLessThan(heat("KATL"));
+    expect(heat("KATL")).toBeLessThan(heat("KMIA"));
+    expect(byId.get("KPHX")!.coolDbF).toBeGreaterThan(byId.get("KSEA")!.coolDbF);
   });
 });

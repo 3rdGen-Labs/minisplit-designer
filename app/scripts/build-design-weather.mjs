@@ -2,7 +2,7 @@
 // Builds src/data/design-locations.json: heating and cooling design-day conditions per weather station,
 // computed from NOAA's public-domain Integrated Surface Database (ISD-Lite hourly observations).
 //
-//   node scripts/build-design-weather.mjs [--state CA] [--from 2011] [--to 2024] [--cache .weather-cache]
+//   node scripts/build-design-weather.mjs [--state ALL|CA|CA,OR] [--from 2011] [--to 2024] [--cache .weather-cache]
 //
 // Method (ASHRAE-style annual percentiles over all hours of the period):
 //   heating 99% dry bulb  = the temperature that 1% of hours fall at or below
@@ -20,7 +20,8 @@ const arg = (name, fallback) => {
   const i = process.argv.indexOf(`--${name}`);
   return i > 0 ? process.argv[i + 1] : fallback;
 };
-const STATE = arg("state", "CA");
+const STATES = arg("state", "ALL").toUpperCase();
+const inScope = (st) => !!st && (STATES === "ALL" || STATES.split(",").includes(st));
 const FROM = Number(arg("from", 2011));
 const TO = Number(arg("to", 2024));
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -59,7 +60,18 @@ function parseCsv(text) {
 }
 
 const titleCase = (s) =>
-  s.toLowerCase().replace(/\b([a-z])/g, (m) => m.toUpperCase()).replace(/\bIntl\b/g, "Intl").replace(/\b(Afb|Mcas|Nas|Naf|Aaf)\b/g, (m) => m.toUpperCase());
+  s.toLowerCase().replace(/\b([a-z])/g, (m) => m.toUpperCase()).replace(/\b(Afb|Mcas|Nas|Naf|Aaf|Ang|Arb)\b/g, (m) => m.toUpperCase());
+
+/** "CHICAGO O'HARE INTERNATIONAL AIRPORT" -> "Chicago O'Hare": drop the words every airport name repeats. */
+function cleanName(raw) {
+  const t = titleCase(raw)
+    .replace(/\b(International|Intl|Airport|Airpor|Arpt|Apt|Ap|Municipal|Muni|Regional|Rgnl|Airfield|Air Park|Airpark)\b\.?/g, "")
+    .replace(/[\s/,-]+$/g, "")
+    .replace(/^[\s/,-]+/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return t || titleCase(raw);
+}
 
 // Airport sensors (ASOS) report whole °F, which NOAA stores rounded to tenths of °C. Snap each reading back to
 // whole °F, treat it as spread evenly over its 1 °F step and interpolate, so a percentile isn't stuck on the step.
@@ -82,7 +94,7 @@ const cToF = (c) => (c * 9) / 5 + 32;
 
 const history = parseCsv((await cached(`${NOAA}/isd-history.csv`, path.join(CACHE, "isd-history.csv"))).toString());
 const stations = history.filter(
-  (s) => s.CTRY === "US" && s.STATE === STATE && s.ICAO?.trim() && s.BEGIN <= `${FROM}0101` && s.END >= `${TO}1231`,
+  (s) => s.CTRY === "US" && inScope(s.STATE) && s.ICAO?.trim() && s.BEGIN <= `${FROM}0101` && s.END >= `${TO}1231`,
 );
 // Several USAF/WBAN ids can share one ICAO airport; merge them.
 const byIcao = new Map();
@@ -120,7 +132,7 @@ for (const [icao, ids] of byIcao) {
   }
   process.stdout.write(`\r${n}/${byIcao.size} ${icao}   `);
   if (goodYears < 8) continue;
-    const heatF = percentileF(temps, 0.01);
+  const heatF = percentileF(temps, 0.01);
   const coolF = percentileF(temps, 0.99);
   const heatC = ((heatF - 32) * 5) / 9;
   const coolC = ((coolF - 32) * 5) / 9;
@@ -133,9 +145,9 @@ for (const [icao, ids] of byIcao) {
   const heatWb = meanWb(heatC);
   out.push({
     id: icao,
-    city: CITIES[icao] ?? titleCase(ids[0]["STATION NAME"]),
+    city: CITIES[icao] ?? cleanName(ids[0]["STATION NAME"]),
     station: titleCase(ids[0]["STATION NAME"]),
-    state: STATE,
+    state: ids[0].STATE,
     lat: Number(ids[0].LAT),
     lon: Number(ids[0].LON),
     elevationFt: Math.round(elevFt),
@@ -146,7 +158,7 @@ for (const [icao, ids] of byIcao) {
     years: goodYears,
   });
 }
-out.sort((a, b) => a.city.localeCompare(b.city));
+out.sort((a, b) => a.state.localeCompare(b.state) || a.city.localeCompare(b.city));
 fs.writeFileSync(
   OUT,
   JSON.stringify(
@@ -156,8 +168,6 @@ fs.writeFileSync(
       period: `${FROM}–${TO}`,
       locations: out,
     },
-    null,
-    1,
-  ) + "\n",
+  ).replace(/\},\{/g, "},\n{") + "\n",
 );
 console.log(`\n${out.length} locations -> ${path.relative(process.cwd(), OUT)}`);

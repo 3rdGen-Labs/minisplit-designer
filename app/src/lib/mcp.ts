@@ -8,12 +8,24 @@ import { site } from "./site";
 import { wetBulbFromRh } from "./psychro.mjs";
 import designWeather from "@/data/design-locations.json";
 
-interface DesignLocation { id: string; city: string; elevationFt: number; heatDbF: number; heatWbF?: number; coolDbF: number }
+interface DesignLocation { id: string; city: string; state: string; elevationFt: number; heatDbF: number; heatWbF?: number; coolDbF: number }
 const LOCATIONS = designWeather.locations as DesignLocation[];
-const findLocation = (q: string) => {
-  const k = q.trim().toLowerCase();
-  return LOCATIONS.find((l) => l.id.toLowerCase() === k) ?? LOCATIONS.find((l) => l.city.toLowerCase() === k) ?? LOCATIONS.find((l) => l.city.toLowerCase().includes(k));
-};
+
+/** "KDEN", "Denver, CO", "Denver CO" or "Sacramento". Returns the match, or the candidates when a city name is ambiguous. */
+function findLocation(q: string): { loc?: DesignLocation; candidates?: DesignLocation[] } {
+  const raw = q.trim();
+  const icao = LOCATIONS.find((l) => l.id.toLowerCase() === raw.toLowerCase());
+  if (icao) return { loc: icao };
+  const m = raw.match(/^(.*?)[,\s]+([A-Za-z]{2})$/);
+  const state = m && LOCATIONS.some((l) => l.state === m[2].toUpperCase()) ? m[2].toUpperCase() : undefined;
+  const city = (state ? m![1] : raw).trim().toLowerCase();
+  const pool = LOCATIONS.filter((l) => !state || l.state === state);
+  const exact = pool.filter((l) => l.city.toLowerCase() === city);
+  const hits = exact.length ? exact : pool.filter((l) => l.city.toLowerCase().startsWith(city));
+  const loose = hits.length ? hits : pool.filter((l) => l.city.toLowerCase().includes(city));
+  if (loose.length === 1 || (loose.length > 1 && new Set(loose.map((l) => l.state)).size === 1)) return { loc: loose[0] };
+  return { candidates: loose.slice(0, 8) };
+}
 
 // Tools exposed at /api/mcp. Same catalog and engine as the designer UI, so answers match what the app shows.
 
@@ -32,7 +44,7 @@ const NOTE = ["Independent tool, not affiliated with Mitsubishi Electric. Verify
 
 const INSTRUCTIONS = `${site.name}: residential Mitsubishi Electric ductless (air-to-air) system builder. Covers M & S-Series single zone, P-Series, MXZ multi-zone and single-phase Smart Multi; no VRF/City Multi, no hydronic.
 Workflow: find an outdoor unit with list_outdoor_units, find compatible indoor units with list_indoor_units (pass the outdoor unit), then call evaluate_design.
-For capacity in the customer's climate pass location (California city or airport code) or the design temperatures.
+For capacity in the customer's climate pass location ("City, ST" or airport code) or the design temperatures.
 Line lengths drive the line-set takeoff and the additional refrigerant charge; floor areas and mounting heights drive the R454B checks. Never invent these: ask the user, or leave them out and report what the result lists as unchecked.
 Results are planning estimates, not manufacturer approval.`;
 
@@ -122,7 +134,7 @@ export function createMcpServer(): McpServer {
         mainLineFt: ft("Branch-box systems: outdoor unit to first branch box"),
         brand: z.enum(["ME", "TRME", "ASME"]).optional().describe("Part numbers: Mitsubishi (default), Trane or American Standard"),
         connectionRatio: z.union([z.literal(100), z.literal(130)]).optional().describe("R410A multi-zone max connection ratio, percent (default 130)"),
-        location: z.string().max(60).optional().describe("California design location: city (e.g. Sacramento, San Jose, South Lake Tahoe) or airport code (KSAC). Fills design temperatures and altitude from NOAA records; explicit temperatures below override it"),
+        location: z.string().max(60).optional().describe("US design location: \"City, ST\" (e.g. \"Denver, CO\", \"Sacramento, CA\") or airport code (KDEN). Fills design temperatures and altitude from NOAA airport records; explicit temperatures below override it"),
         coolOutdoorDbF: z.number().min(-40).max(130).optional().describe(`Outdoor cooling design dry bulb, °F (default ${DEFAULT_CONDITIONS.coolOutdoorDbF})`),
         heatOutdoorDbF: z.number().min(-40).max(80).optional().describe("Outdoor heating design dry bulb, °F (the normal winter design temperature); wet bulb is derived with heatRhPct"),
         heatRhPct: z.number().min(1).max(100).optional().describe("Outdoor relative humidity at the heating design, % (default 72.8)"),
@@ -141,8 +153,14 @@ export function createMcpServer(): McpServer {
         const { indoorUnit: _ref, ...rest } = p;
         idus.push({ ...rest, key: `idu${i + 1}`, iduId: u.id, room: p.room ?? `Zone ${i + 1}` });
       }
-      const loc = a.location ? findLocation(a.location) : undefined;
-      if (a.location && !loc) return fail(`No design location matches "${a.location}". California cities/airports only, e.g. ${LOCATIONS.slice(0, 6).map((l) => l.city).join(", ")}. Or pass the temperatures directly.`);
+      const found = a.location ? findLocation(a.location) : undefined;
+      const loc = found?.loc;
+      if (a.location && !loc)
+        return fail(
+          found?.candidates?.length
+            ? `"${a.location}" matches several locations: ${found.candidates.map((l) => `${l.city}, ${l.state} (${l.id})`).join("; ")}. Pass one of those or add the state.`
+            : `No design location matches "${a.location}". Use "City, ST" or an airport code (e.g. KDEN), or pass the temperatures directly.`,
+        );
       const altitudeFt = a.altitudeFt ?? loc?.elevationFt ?? DEFAULT_CONDITIONS.altitudeFt;
       const heatDb = a.heatOutdoorDbF ?? (a.heatOutdoorWbF == null ? loc?.heatDbF : undefined);
       const heatWb =
@@ -176,7 +194,7 @@ export function createMcpServer(): McpServer {
       const { compatibleIduIds: _ids, controllers, accessoryOptions, ...result } = evaluation;
       return json({
         outdoorUnit: odu.model,
-        designConditions: { location: loc ? `${loc.city} (${loc.id})` : undefined, coolingOutdoorDbF: conditions.coolOutdoorDbF, heatingOutdoorDbF: conditions.heatOutdoorDbF, heatingOutdoorWbF: conditions.heatOutdoorWbF, altitudeFt: conditions.altitudeFt },
+        designConditions: { location: loc ? `${loc.city}, ${loc.state} (${loc.id})` : undefined, coolingOutdoorDbF: conditions.coolOutdoorDbF, heatingOutdoorDbF: conditions.heatOutdoorDbF, heatingOutdoorWbF: conditions.heatOutdoorWbF, altitudeFt: conditions.altitudeFt },
         units: Object.fromEntries(idus.map((p) => [p.key, { model: iduById.get(p.iduId)?.model, room: p.room }])),
         ...result,
         controllerOptions: Object.fromEntries(Object.entries(controllers).map(([k, v]) => [k, v.map((c) => c.model)])),

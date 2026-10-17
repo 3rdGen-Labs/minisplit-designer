@@ -16,7 +16,6 @@ import {
 import DesignSplit from "./DesignSplit";
 import { appPath, site } from "@/lib/site";
 import { rhFromWetBulb, wetBulbFromRh } from "@/lib/psychro.mjs";
-import designWeather from "@/data/design-locations.json";
 import GuidedTutorial, { DEFAULT_TUTORIAL, readTutorialPreferences, saveTutorialPreferences, type TutorialPreferences } from "./GuidedTutorial";
 import { issueDestination, type PropertyDestination } from "@/lib/issue-navigation";
 import { DEFAULT_CONDITIONS } from "@/lib/design";
@@ -1924,8 +1923,19 @@ function PipingSettings({ system, odu, evaluation, iduById, onChange }: {
   );
 }
 
-interface DesignLocation { id: string; city: string; elevationFt: number; heatDbF: number; heatWbF?: number; coolDbF: number; coolMcwbF?: number }
-const DESIGN_LOCATIONS = designWeather.locations as DesignLocation[];
+interface DesignLocation { id: string; city: string; state: string; elevationFt: number; heatDbF: number; heatWbF?: number; coolDbF: number; coolMcwbF?: number }
+interface DesignWeather { period: string; locations: DesignLocation[] }
+
+/** The nationwide location table is a few hundred KB, so it loads only when the capacity section opens. */
+function useDesignWeather() {
+  const [data, setData] = useState<DesignWeather | null>(null);
+  useEffect(() => {
+    let live = true;
+    import("@/data/design-locations.json").then((m) => live && setData(m.default as DesignWeather));
+    return () => { live = false; };
+  }, []);
+  return data;
+}
 const round1 = (v: number) => Math.round(v * 10) / 10;
 /** DSB's default heating humidity: 47 °F dry bulb at 72.8 % RH is the 43 °F wet bulb rating point. */
 const DEFAULT_HEAT_RH = 72.8;
@@ -1939,9 +1949,15 @@ function CapacityBlock({ capacity, settings, onSettings }: { capacity?: Capacity
   const heatRh = c.heatRhPct ?? round1(rhFromWetBulb(heatDb, c.heatOutdoorWbF, c.altitudeFt));
   const setHeat = (db: number, rh: number, altitudeFt = c.altitudeFt) =>
     set({ heatOutdoorDbF: db, heatRhPct: rh, altitudeFt, heatOutdoorWbF: round1(wetBulbFromRh(db, rh, altitudeFt)) });
+  const weather = useDesignWeather();
+  const locations = weather?.locations ?? [];
+  const current = c.location ? locations.find((l) => l.id === c.location) : undefined;
+  const [state, setState] = useState<string | undefined>();
+  const shownState = state ?? current?.state ?? "CA";
+  const states = useMemo(() => [...new Set(locations.map((l) => l.state))].sort(), [locations]);
   const pickLocation = (id: string) => {
     if (id === "default") return onSettings({ ...settings, conditions: { ...DEFAULT_CONDITIONS } });
-    const l = DESIGN_LOCATIONS.find((x) => x.id === id);
+    const l = locations.find((x) => x.id === id);
     if (!l) return;
     const wb = l.heatWbF ?? round1(wetBulbFromRh(l.heatDbF, DEFAULT_HEAT_RH, l.elevationFt));
     onSettings({
@@ -1966,22 +1982,29 @@ function CapacityBlock({ capacity, settings, onSettings }: { capacity?: Capacity
     );
   return (
     <Section title="Capacity at design conditions">
-      <label className="block">
-        <span className="text-[11px] text-[var(--muted)]">Design location</span>
-        <select
-          value={c.location ?? ""}
-          onChange={(e) => pickLocation(e.target.value)}
-          className="mt-0.5 w-full rounded border border-[var(--line)] bg-[var(--field)] px-2 py-1.5"
-        >
-          <option value="" disabled={!!c.location}>{c.location ? "Custom" : "Custom (entered below)"}</option>
-          <option value="default">Rating conditions (95 °F cooling / 47 °F heating, sea level)</option>
-          <optgroup label="California">
-            {DESIGN_LOCATIONS.map((l) => (
+      <div className="grid grid-cols-[5.5rem_1fr] gap-x-2">
+        <label className="block">
+          <span className="text-[11px] text-[var(--muted)]">State</span>
+          <select value={shownState} onChange={(e) => setState(e.target.value)} disabled={!weather} className="mt-0.5 w-full rounded border border-[var(--line)] bg-[var(--field)] px-2 py-1.5">
+            {(states.length ? states : ["CA"]).map((st) => <option key={st} value={st}>{st}</option>)}
+          </select>
+        </label>
+        <label className="block min-w-0">
+          <span className="text-[11px] text-[var(--muted)]">Design location</span>
+          <select
+            value={current && current.state === shownState ? current.id : ""}
+            onChange={(e) => pickLocation(e.target.value)}
+            disabled={!weather}
+            className="mt-0.5 w-full rounded border border-[var(--line)] bg-[var(--field)] px-2 py-1.5"
+          >
+            <option value="" disabled>{!weather ? "Loading locations…" : c.location ? "Choose a location" : "Custom (entered below)"}</option>
+            <option value="default">Rating conditions (95 °F / 47 °F, sea level)</option>
+            {locations.filter((l) => l.state === shownState).map((l) => (
               <option key={l.id} value={l.id}>{`${l.city} · ${Math.round(l.heatDbF)}° / ${Math.round(l.coolDbF)}°F`}</option>
             ))}
-          </optgroup>
-        </select>
-      </label>
+          </select>
+        </label>
+      </div>
       <div className="grid grid-cols-2 gap-x-2">
         <NumberField label="Heating outdoor DB (°F)" value={heatDb} onChange={(v) => setHeat(v ?? 47, heatRh)} allowNegative />
         <NumberField label="Heating outdoor RH (%)" value={heatRh} onChange={(v) => setHeat(heatDb, Math.min(100, Math.max(1, v ?? DEFAULT_HEAT_RH)))} />
@@ -1994,7 +2017,7 @@ function CapacityBlock({ capacity, settings, onSettings }: { capacity?: Capacity
         Heating outdoor wet bulb: <span className="font-semibold text-[var(--fg)]">{c.heatOutdoorWbF} °F</span> (calculated from dry bulb, humidity and altitude; heat pump capacity is rated on it). These apply to the whole project.
       </p>
       <p className="text-[11px] text-[var(--muted)]">
-        Locations: 99% heating and 1% cooling design days computed from NOAA airport weather records, {designWeather.period}. Recent winters run warmer than older published tables; enter your own values if your jurisdiction specifies them.
+        Locations: 99% heating and 1% cooling design days computed from NOAA airport weather records{weather ? `, ${weather.period}` : ""}. Recent winters run warmer than older published tables; enter your own values if your jurisdiction specifies them.
       </p>
       {capacity ? (
         <>
