@@ -25,6 +25,12 @@ export interface DesignConditions {
   heatIndoorDbF: number;
   /** Site altitude, ft (default 0). */
   altitudeFt: number;
+  /** Outdoor heating design DRY bulb, °F, as entered. The engine uses the wet bulb derived from it and heatRhPct. */
+  heatOutdoorDbF?: number;
+  /** Outdoor relative humidity at the heating design, %. */
+  heatRhPct?: number;
+  /** Design location id (weather station ICAO) the temperatures came from; cleared when they're edited. */
+  location?: string;
 }
 
 export const DEFAULT_CONDITIONS: DesignConditions = { coolOutdoorDbF: 95, heatOutdoorWbF: 43, coolIndoorWbF: 67, heatIndoorDbF: 70, altitudeFt: 0 };

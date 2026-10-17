@@ -17,3 +17,5 @@ Dependency packages, bundled third-party components, starter assets and fonts re
 Generic unit illustrations are generated from the original procedural models in `design/blender/units.py`; the port-cap image is a separate project asset. Project/business branding and installation icons can be removed or replaced. Their inclusion does not grant permission to impersonate the businesses or imply their endorsement.
 
 No manufacturer approval, equipment certification or guarantee of engineering accuracy is granted. Review the limitations and verification guidance in `RELEASE_STATUS.md`.
+
+Design-location weather data (`app/src/data/design-locations.json`) is derived by this project from NOAA NCEI Integrated Surface Database records, which are US government works in the public domain.

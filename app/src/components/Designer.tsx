@@ -15,6 +15,8 @@ import {
 } from "@dnd-kit/core";
 import DesignSplit from "./DesignSplit";
 import { appPath, site } from "@/lib/site";
+import { rhFromWetBulb, wetBulbFromRh } from "@/lib/psychro.mjs";
+import designWeather from "@/data/design-locations.json";
 import GuidedTutorial, { DEFAULT_TUTORIAL, readTutorialPreferences, saveTutorialPreferences, type TutorialPreferences } from "./GuidedTutorial";
 import { issueDestination, type PropertyDestination } from "@/lib/issue-navigation";
 import { DEFAULT_CONDITIONS } from "@/lib/design";
@@ -1922,9 +1924,31 @@ function PipingSettings({ system, odu, evaluation, iduById, onChange }: {
   );
 }
 
+interface DesignLocation { id: string; city: string; elevationFt: number; heatDbF: number; heatWbF?: number; coolDbF: number; coolMcwbF?: number }
+const DESIGN_LOCATIONS = designWeather.locations as DesignLocation[];
+const round1 = (v: number) => Math.round(v * 10) / 10;
+/** DSB's default heating humidity: 47 °F dry bulb at 72.8 % RH is the 43 °F wet bulb rating point. */
+const DEFAULT_HEAT_RH = 72.8;
+
 function CapacityBlock({ capacity, settings, onSettings }: { capacity?: CapacityResult; settings: ProjectSettings; onSettings: (s: ProjectSettings) => void }) {
   const c = { ...DEFAULT_CONDITIONS, ...settings.conditions };
-  const set = (patch: Partial<DesignConditions>) => onSettings({ ...settings, conditions: { ...c, ...patch } });
+  // Typing any temperature or altitude by hand means the values no longer match the chosen location.
+  const set = (patch: Partial<DesignConditions>) => onSettings({ ...settings, conditions: { ...c, location: undefined, ...patch } });
+  // Older projects stored only the heating wet bulb; show a dry bulb and RH that reproduce it.
+  const heatDb = c.heatOutdoorDbF ?? (c.heatOutdoorWbF === DEFAULT_CONDITIONS.heatOutdoorWbF ? 47 : c.heatOutdoorWbF + 1);
+  const heatRh = c.heatRhPct ?? round1(rhFromWetBulb(heatDb, c.heatOutdoorWbF, c.altitudeFt));
+  const setHeat = (db: number, rh: number, altitudeFt = c.altitudeFt) =>
+    set({ heatOutdoorDbF: db, heatRhPct: rh, altitudeFt, heatOutdoorWbF: round1(wetBulbFromRh(db, rh, altitudeFt)) });
+  const pickLocation = (id: string) => {
+    if (id === "default") return onSettings({ ...settings, conditions: { ...DEFAULT_CONDITIONS } });
+    const l = DESIGN_LOCATIONS.find((x) => x.id === id);
+    if (!l) return;
+    const wb = l.heatWbF ?? round1(wetBulbFromRh(l.heatDbF, DEFAULT_HEAT_RH, l.elevationFt));
+    onSettings({
+      ...settings,
+      conditions: { ...c, location: l.id, coolOutdoorDbF: l.coolDbF, heatOutdoorDbF: l.heatDbF, heatOutdoorWbF: wb, heatRhPct: round1(rhFromWetBulb(l.heatDbF, wb, l.elevationFt)), altitudeFt: l.elevationFt },
+    });
+  };
   const row = (label: string, m?: ModeCapacity) =>
     m && (
       <div>
@@ -1942,14 +1966,36 @@ function CapacityBlock({ capacity, settings, onSettings }: { capacity?: Capacity
     );
   return (
     <Section title="Capacity at design conditions">
+      <label className="block">
+        <span className="text-[11px] text-[var(--muted)]">Design location</span>
+        <select
+          value={c.location ?? ""}
+          onChange={(e) => pickLocation(e.target.value)}
+          className="mt-0.5 w-full rounded border border-[var(--line)] bg-[var(--field)] px-2 py-1.5"
+        >
+          <option value="" disabled={!!c.location}>{c.location ? "Custom" : "Custom (entered below)"}</option>
+          <option value="default">Rating conditions (95 °F cooling / 47 °F heating, sea level)</option>
+          <optgroup label="California">
+            {DESIGN_LOCATIONS.map((l) => (
+              <option key={l.id} value={l.id}>{`${l.city} · ${Math.round(l.heatDbF)}° / ${Math.round(l.coolDbF)}°F`}</option>
+            ))}
+          </optgroup>
+        </select>
+      </label>
       <div className="grid grid-cols-2 gap-x-2">
+        <NumberField label="Heating outdoor DB (°F)" value={heatDb} onChange={(v) => setHeat(v ?? 47, heatRh)} allowNegative />
+        <NumberField label="Heating outdoor RH (%)" value={heatRh} onChange={(v) => setHeat(heatDb, Math.min(100, Math.max(1, v ?? DEFAULT_HEAT_RH)))} />
         <NumberField label="Cooling outdoor DB (°F)" value={c.coolOutdoorDbF} onChange={(v) => set({ coolOutdoorDbF: v ?? 95 })} allowNegative />
-        <NumberField label="Heating outdoor WB (°F)" value={c.heatOutdoorWbF} onChange={(v) => set({ heatOutdoorWbF: v ?? 43 })} allowNegative />
+        <NumberField label="Altitude (ft)" value={c.altitudeFt} onChange={(v) => setHeat(heatDb, heatRh, v ?? 0)} />
         <NumberField label="Indoor cooling WB (°F)" value={c.coolIndoorWbF} onChange={(v) => set({ coolIndoorWbF: v ?? 67 })} />
         <NumberField label="Indoor heating DB (°F)" value={c.heatIndoorDbF} onChange={(v) => set({ heatIndoorDbF: v ?? 70 })} />
-        <NumberField label="Altitude (ft)" value={c.altitudeFt} onChange={(v) => set({ altitudeFt: v ?? 0 })} />
       </div>
-      <p className="text-[11px] text-[var(--muted)]">Heating uses outdoor wet bulb (about 1 °F below dry bulb in cold weather). These apply to the whole project.</p>
+      <p className="text-[11px] text-[var(--muted)]">
+        Heating outdoor wet bulb: <span className="font-semibold text-[var(--fg)]">{c.heatOutdoorWbF} °F</span> (calculated from dry bulb, humidity and altitude; heat pump capacity is rated on it). These apply to the whole project.
+      </p>
+      <p className="text-[11px] text-[var(--muted)]">
+        Locations: 99% heating and 1% cooling design days computed from NOAA airport weather records, {designWeather.period}. Recent winters run warmer than older published tables; enter your own values if your jurisdiction specifies them.
+      </p>
       {capacity ? (
         <>
           {row("Cooling", capacity.cooling)}

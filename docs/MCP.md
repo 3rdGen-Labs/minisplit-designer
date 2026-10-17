@@ -26,7 +26,7 @@ No AI model runs inside the server; your client supplies the AI.
 | --- | --- | --- |
 | `list_outdoor_units` | Optional system, refrigerant, cooling range, model/name query, legacy toggle | Matching outdoor units with capacities, refrigerant and indoor-unit limits |
 | `list_indoor_units` | Optional outdoor unit (id or model), system, unit type, size, query, legacy toggle | Indoor units, filtered to those that connect to the given outdoor unit |
-| `evaluate_design` | Outdoor unit, 1–16 indoor units (line length, bends, height, R454B room inputs, controller), single-zone line length, branch-box main line, brand, connection ratio, design temperatures | Pass/fail/incomplete with reasons, BOM, piping, additional refrigerant charge, corrected capacity, R454B checks, controller and accessory options, and the rules left unchecked |
+| `evaluate_design` | Outdoor unit, 1–16 indoor units (line length, bends, height, R454B room inputs, controller), single-zone line length, branch-box main line, brand, connection ratio, design location (California city or airport code) or design temperatures | Pass/fail/incomplete with reasons, BOM, piping, additional refrigerant charge, corrected capacity, R454B checks, controller and accessory options, and the rules left unchecked |
 
 Example `evaluate_design` arguments:
 

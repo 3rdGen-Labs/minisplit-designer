@@ -4,3 +4,6 @@ node_modules/
 .env*
 *.tsbuildinfo
 .DS_Store
+
+# NOAA downloads for pnpm weather
+app/.weather-cache/
