@@ -318,8 +318,11 @@ export default function Designer({ palette }: { palette: Palette }) {
       const after = await fetchEvaluation(trial, settings, ctrl.signal);
       if (!after || ctrl.signal.aborted) return;
       const had = new Set(evaluation.issues.filter((x) => x.severity === "error").map((x) => `${x.code}|${x.message}`));
-      const added = after.issues.find((x) => x.severity === "error" && !x.incomplete && !had.has(`${x.code}|${x.message}`));
-      setAddBlocked(added ? added.message : null);
+      const added = after.issues.filter((x) => x.severity === "error" && !x.incomplete && !had.has(`${x.code}|${x.message}`));
+      // Several reasons can fire at once. Show the hard limit first: capacity can't be fixed by adding a box,
+      // while "not enough ports" can.
+      const rank = (x: Issue) => (/capacity|combination|connection factor/i.test(x.message) ? 0 : x.code === "BOX_PORTS" ? 2 : 1);
+      setAddBlocked(added.length ? added.sort((x, y) => rank(x) - rank(y))[0].message : null);
     }, 300);
     return () => { clearTimeout(timer); ctrl.abort(); };
   }, [active, odu, evaluation, palette.idus, settings]);
