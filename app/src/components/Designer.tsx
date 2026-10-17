@@ -150,6 +150,9 @@ export default function Designer({ palette }: { palette: Palette }) {
   const [dragging, setDragging] = useState<DragItem | null>(null);
   const [bottomTab, setBottomTab] = useState<"errors" | "bom" | "piping">("errors");
   const [picker, setPicker] = useState<DragItem | null>(null);
+  // "+ Add" on the canvas: pick a family / unit type first. A port target puts the new unit on that branch-box port.
+  const [chooser, setChooser] = useState<"odu" | "idu" | null>(null);
+  const [addTarget, setAddTarget] = useState<{ box: number; port: string } | null>(null);
   const [blocked, setBlocked] = useState<{ model: string; errors: string[] } | null>(null);
   const [checking, setChecking] = useState(false);
   const [validatingAll, setValidatingAll] = useState(false);
@@ -320,21 +323,21 @@ export default function Designer({ palette }: { palette: Palette }) {
     updateSystem(active.id, (s) => (s.system === o.system ? { ...s, oduId: o.id } : { ...s, system: o.system, oduId: o.id, idus: [], branchBoxes: [] }));
     setSelection({ systemId: active.id, target: "odu" });
   };
-  const addIdu = (i: PaletteIdu) => {
+  const addIdu = (i: PaletteIdu, target?: { box: number; port: string } | null) => {
     setTutorialStep((step) => step === 2 ? 3 : step);
     const key = uid();
     updateSystem(active.id, (s) => ({
       ...s,
-      idus: [...s.idus, { key, iduId: i.id, room: `Room ${s.idus.length + 1}` }],
+      idus: [...s.idus, { key, iduId: i.id, room: `Room ${s.idus.length + 1}`, ...(target && { box: target.box, port: target.port }) }],
     }));
     setSelection({ systemId: active.id, target: key });
   };
 
   // Picking a unit by hand: try it first and refuse it if it adds an error. Errors that more units would clear
   // (too few units, under minimum capacity) don't count, or a multi-zone could never be built up one unit at a time.
-  const tryAddIdu = async (i: PaletteIdu) => {
+  const tryAddIdu = async (i: PaletteIdu, target?: { box: number; port: string } | null) => {
     const sys = active;
-    const trial: SystemDesign = { ...sys, idus: [...sys.idus, { key: uid(), iduId: i.id, room: `Room ${sys.idus.length + 1}` }] };
+    const trial: SystemDesign = { ...sys, idus: [...sys.idus, { key: uid(), iduId: i.id, room: `Room ${sys.idus.length + 1}`, ...(target && { box: target.box, port: target.port }) }] };
     setChecking(true);
     const [before, after] = await Promise.all([fetchEvaluation(sys, settings), fetchEvaluation(trial, settings)]);
     setChecking(false);
@@ -348,7 +351,7 @@ export default function Designer({ palette }: { palette: Palette }) {
       setBlocked({ model: i.model, errors: added.map((x) => x.message) });
       return false;
     }
-    addIdu(i);
+    addIdu(i, target);
     return true;
   };
 
@@ -543,6 +546,8 @@ export default function Designer({ palette }: { palette: Palette }) {
               onRemoveIdu={(key) => updateSystem(active.id, (s) => ({ ...s, idus: s.idus.filter((i) => i.key !== key) }))}
               onPatch={(patch) => updateSystem(active.id, (s) => ({ ...s, ...patch }))}
               onPatchIdu={(key, patch) => updateSystem(active.id, (s) => ({ ...s, idus: s.idus.map((i) => (i.key === key ? { ...i, ...patch } : i)) }))}
+              onAddOdu={() => setChooser("odu")}
+              onAddIdu={(target) => { setAddTarget(target ?? null); setChooser("idu"); }}
             />
               )}
               results={(
@@ -648,10 +653,25 @@ export default function Designer({ palette }: { palette: Palette }) {
             setPicker(null);
           }}
           onPickIdu={async (i) => {
-            if (await tryAddIdu(i)) setPicker(null);
+            if (await tryAddIdu(i, addTarget)) { setPicker(null); setAddTarget(null); }
           }}
           checking={checking}
-          onClose={() => setPicker(null)}
+          onClose={() => { setPicker(null); setAddTarget(null); }}
+        />
+      )}
+      {chooser && (
+        <TypeChooser
+          kind={chooser}
+          palette={palette}
+          system={active.system}
+          hasOdu={!!odu}
+          compatible={evaluation?.compatibleIduIds}
+          showLegacy={!!active.showLegacy}
+          refrigerant={active.refrigerantFilter}
+          onRefrigerant={(r) => updateSystem(active.id, (s) => ({ ...s, refrigerantFilter: r }))}
+          port={addTarget?.port}
+          onPick={(item) => { setChooser(null); setPicker(item); }}
+          onClose={() => { setChooser(null); setAddTarget(null); }}
         />
       )}
       {workspaceDialog === "settings" && (
@@ -923,21 +943,36 @@ function TileShelf(props: TileShelfProps) {
   return <EquipmentLibrary key={props.hasOdu ? "configured" : "empty"} {...props} />;
 }
 
+/** Outdoor families with how many models each offers under the current filters. */
+function familyCounts(palette: Palette, showLegacy: boolean, refrigerant: RefrigerantFilter) {
+  return (Object.keys(FAMILY_LABEL) as SystemKey[])
+    .map((k) => [k, palette.odus.filter((o) => o.system === k && (showLegacy || !o.legacy) && (!refrigerant || o.refrigerant === refrigerant)).length] as const)
+    .filter(([, n]) => n > 0);
+}
+
+/** Indoor unit types that can go on this system, with model counts; types with artwork first. */
+function iduTypeCounts(palette: Palette, system: SystemKey, hasOdu: boolean, compatible: number[] | undefined, showLegacy: boolean) {
+  const counts = new Map<string, number>();
+  for (const i of iduCandidates(palette, system, hasOdu, compatible, showLegacy)) counts.set(i.typeName, (counts.get(i.typeName) ?? 0) + 1);
+  return [...counts.entries()].sort((a, b) => Number(!IDU_ICONS[a[0]]) - Number(!IDU_ICONS[b[0]]) || b[1] - a[1]);
+}
+
+const isPhone = () => typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches;
+
 function EquipmentLibrary(props: TileShelfProps) {
   const [outdoorOpen, setOutdoorOpen] = useState(!props.hasOdu);
   const [indoorOpen, setIndoorOpen] = useState(props.hasOdu);
-  const families = useMemo(
-    () =>
-      (Object.keys(FAMILY_LABEL) as SystemKey[])
-        .map((k) => [k, props.palette.odus.filter((o) => o.system === k && (props.showLegacy || !o.legacy) && (!props.refrigerant || o.refrigerant === props.refrigerant)).length] as const)
-        .filter(([, n]) => n > 0),
-    [props.palette.odus, props.showLegacy, props.refrigerant],
+  // Phones add units from the canvas "+ Add" buttons, so the library starts collapsed there.
+  useEffect(() => {
+    if (!isPhone()) return;
+    setOutdoorOpen(false);
+    setIndoorOpen(false);
+  }, []);
+  const families = useMemo(() => familyCounts(props.palette, props.showLegacy, props.refrigerant), [props.palette, props.showLegacy, props.refrigerant]);
+  const types = useMemo(
+    () => iduTypeCounts(props.palette, props.system, props.hasOdu, props.compatible, props.showLegacy),
+    [props.palette, props.system, props.hasOdu, props.compatible, props.showLegacy],
   );
-  const types = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const i of iduCandidates(props.palette, props.system, props.hasOdu, props.compatible, props.showLegacy)) counts.set(i.typeName, (counts.get(i.typeName) ?? 0) + 1);
-    return [...counts.entries()].sort((a, b) => Number(!IDU_ICONS[a[0]]) - Number(!IDU_ICONS[b[0]]) || b[1] - a[1]);
-  }, [props.palette, props.system, props.hasOdu, props.compatible, props.showLegacy]);
 
   return (
     <div className="equipment-library flex min-h-0 flex-1 flex-col">
@@ -1089,26 +1124,26 @@ function ModelPicker(props: {
   }, [props]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center" onClick={props.onClose}>
+    <div className="picker-backdrop fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center" onClick={props.onClose}>
       <div
         role="dialog"
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        aria-modal="true"
         aria-label={`Choose ${title}`}
         onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[85dvh] w-full flex-col rounded-t-lg bg-[var(--panel)] shadow-xl sm:max-w-lg sm:rounded-lg"
+        className="picker-sheet flex max-h-[85dvh] w-full flex-col rounded-t-lg bg-[var(--panel)] shadow-xl sm:max-w-lg sm:rounded-lg"
       >
         <div className="flex items-center gap-3 border-b border-[var(--line)] p-3">
           <div className="w-20 shrink-0">
             <UnitIcon src={iconFor(props.item)} label={title} size="h-12" />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="font-semibold">{title}</div>
+            <div className="picker-title font-semibold">{title}</div>
             <div className="text-[11px] text-[var(--muted)]">
               {rows.length} model{rows.length === 1 ? "" : "s"}
               {props.item.kind === "idu" && props.hasOdu ? " compatible with this outdoor unit" : ""}
             </div>
           </div>
-          <button onClick={props.onClose} className="px-2 text-[var(--muted)] hover:text-[var(--fg)]" aria-label="Close">
+          <button onClick={props.onClose} className="picker-close px-2 text-[var(--muted)] hover:text-[var(--fg)]" aria-label="Close">
             ✕
           </button>
         </div>
@@ -1127,7 +1162,10 @@ function ModelPicker(props: {
             ))}
           </div>
           <input
-            autoFocus
+            // Desktop only: on phones, focusing would pop the keyboard over the list before anyone asked to search.
+            autoFocus={finePointer()}
+            type="search"
+            enterKeyHint="search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder={mode === "model" ? "e.g. MSZ-FS12 or MXZ-3C24" : "e.g. 1.5-ton wall, hyper heat, cassette"}
@@ -1141,7 +1179,7 @@ function ModelPicker(props: {
         <ul className="min-h-0 flex-1 overflow-auto">
           {rows.map((r) => (
             <li key={r.key}>
-              <button onClick={r.pick} disabled={props.checking} className="flex w-full disabled:cursor-wait disabled:opacity-60 items-center gap-3 border-b border-[var(--line-soft)] px-3 py-2 text-left hover:bg-[var(--hover)]">
+              <button onClick={r.pick} disabled={props.checking} className="picker-row flex w-full disabled:cursor-wait disabled:opacity-60 items-center gap-3 border-b border-[var(--line-soft)] px-3 py-2 text-left hover:bg-[var(--hover)]">
                 {mode === "model" ? (
                   <span className="min-w-0 flex-1">
                     <span className="block font-mono text-[13px] font-semibold">{r.model}</span>
@@ -1165,6 +1203,66 @@ function ModelPicker(props: {
     </div>
   );
 }
+
+/** "+ Add" from the canvas: choose an outdoor family or an indoor unit type, then the model picker opens. */
+function TypeChooser(props: {
+  kind: "odu" | "idu";
+  palette: Palette;
+  system: SystemKey;
+  hasOdu: boolean;
+  compatible?: number[];
+  showLegacy: boolean;
+  refrigerant: RefrigerantFilter;
+  onRefrigerant: (r: RefrigerantFilter) => void;
+  port?: string;
+  onPick: (item: DragItem) => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && props.onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [props]);
+  const odu = props.kind === "odu";
+  const items: { item: DragItem; label: string; count: number }[] = odu
+    ? familyCounts(props.palette, props.showLegacy, props.refrigerant).map(([system, count]) => ({ item: { kind: "odu", system }, label: FAMILY_LABEL[system], count }))
+    : iduTypeCounts(props.palette, props.system, props.hasOdu, props.compatible, props.showLegacy).map(([typeName, count]) => ({ item: { kind: "idu", typeName }, label: typeName, count }));
+  const title = odu ? "Add an outdoor unit" : props.port ? `Add an indoor unit on port ${props.port}` : "Add an indoor unit";
+  return (
+    <div className="picker-backdrop fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center" onClick={props.onClose}>
+      <div role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()} className="picker-sheet flex max-h-[85dvh] w-full flex-col rounded-t-lg bg-[var(--panel)] shadow-xl sm:max-w-lg sm:rounded-lg">
+        <div className="flex items-center gap-3 border-b border-[var(--line)] p-3">
+          <div className="min-w-0 flex-1">
+            <div className="picker-title font-semibold">{title}</div>
+            <div className="text-[11px] text-[var(--muted)]">{odu ? "Choose a family, then a model." : "Only types that work with this outdoor unit are shown."}</div>
+          </div>
+          <button onClick={props.onClose} className="picker-close px-2 text-[var(--muted)] hover:text-[var(--fg)]" aria-label="Close">✕</button>
+        </div>
+        {odu && (
+          <div className="flex gap-1 border-b border-[var(--line)] p-3" role="radiogroup" aria-label="Refrigerant">
+            {REFRIGERANTS.map((r) => (
+              <button key={r.label} role="radio" aria-checked={props.refrigerant === r.value} onClick={() => props.onRefrigerant(r.value)} className={`flex-1 rounded border px-2 py-2 text-[13px] ${props.refrigerant === r.value ? "border-[var(--accent)] bg-[var(--sel)] text-[var(--sel-fg)]" : "border-[var(--line)] bg-[var(--field)] hover:border-[var(--accent)]"}`}>
+                {r.label}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="grid min-h-0 flex-1 auto-rows-min grid-cols-2 gap-2 overflow-auto p-3">
+          {items.map(({ item, label, count }) => (
+            <button key={label} onClick={() => props.onPick(item)} className="equipment-tile flex flex-col items-center rounded border border-[var(--line)] bg-[var(--field)] p-3 text-center hover:border-[var(--accent)]">
+              <UnitIcon src={iconFor(item)} label={label} size="h-16" />
+              <span className="mt-1 text-[13px] font-semibold leading-tight">{label}</span>
+              <span className="text-[11px] text-[var(--muted)]">{count} models</span>
+            </button>
+          ))}
+          {!items.length && <Empty>{odu ? "No outdoor units match this filter." : "No indoor units match this outdoor unit."}</Empty>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const finePointer = () => typeof window !== "undefined" && window.matchMedia("(pointer: fine)").matches;
 
 /** Multi-zone outdoor units: how many indoor units they take, shown in the picker before anything is placed. */
 function iduLimit(o: PaletteOdu): string | undefined {
@@ -1216,6 +1314,8 @@ function Canvas(props: {
   onRemoveIdu: (key: string) => void;
   onPatch: (patch: Partial<SystemDesign>) => void;
   onPatchIdu: (key: string, patch: Partial<IduPlacement>) => void;
+  onAddOdu: () => void;
+  onAddIdu: (target?: { box: number; port: string }) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: "canvas" });
   const singleZone = props.system.system === "MandS" || props.system.system === "P";
@@ -1254,13 +1354,15 @@ function Canvas(props: {
     return [...slots, ...loose.map((key) => ({ port: undefined, key }))];
   };
 
+  const atMax = !!props.odu && props.system.idus.length >= (props.odu.maxIdus || 1);
+
   // A plain function, not a component: defined inside Canvas, a component would remount (and drop input focus) on every render.
   const iduRow = (rowKeys: string[], ports?: number, box = 0) => {
     const slots = (ports ? portSlots(rowKeys, ports, box) : rowKeys.map((key) => ({ port: undefined as string | undefined, key }))).filter(
       ({ port, key }) => port || props.system.idus.some((x) => x.key === key),
     );
     return (
-    <div className="relative flex flex-wrap justify-center gap-x-4 gap-y-6 pt-6">
+    <div className="idu-row relative flex flex-wrap justify-center gap-x-4 gap-y-6 pt-6">
       {slots.map(({ port, key }, i) => {
         const p = key ? props.system.idus.find((x) => x.key === key) : undefined;
         const bus = <PipeBus index={i} count={slots.length} halfGap={8} />;
@@ -1268,11 +1370,13 @@ function Canvas(props: {
           if (!port) return null;
           const capped = cappedOn(box).includes(port);
           return (
-            <div key={`open-${port}`} className="relative flex flex-col items-center">
+            <div key={`open-${port}`} className="idu-branch is-open relative flex flex-col items-center">
               {bus}
-              <div className="absolute -top-6 h-6 w-0.5 bg-[var(--line)]" />
-              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--muted)]">Port {port}</div>
-              {iduLines && <div aria-hidden="true" className="h-14 w-0.5 shrink-0 bg-[var(--line)]" />}
+              <div className="pipe-drop absolute -top-6 h-6 w-0.5 bg-[var(--line)]" />
+              <div className="idu-head flex flex-col items-center">
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--muted)]">Port {port}</div>
+                {iduLines && <div aria-hidden="true" className="pipe-v h-14 w-0.5 shrink-0 bg-[var(--line)]" />}
+              </div>
               <div className={`flex h-24 w-48 flex-col items-center justify-center gap-1.5 rounded border-2 text-[11px] text-[var(--muted)] ${capped ? "border-solid border-[var(--line)] bg-[var(--hover)]" : "border-dashed border-[var(--line)]"}`}>
                 {capped && <img src={U("port-caps")} alt="Brass liquid and gas port caps" className="no-callout pointer-events-none h-12 w-20 object-contain" draggable={false} />}
                 <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-[var(--fg)]" onClick={(e) => e.stopPropagation()}>
@@ -1280,28 +1384,33 @@ function Canvas(props: {
                   Cap
                 </label>
                 <span>{capped ? "Capped · not used" : "Open"}</span>
+                {!capped && !atMax && (
+                  <button className="add-here-button" onClick={(e) => { e.stopPropagation(); props.onAddIdu({ box, port }); }}>+ Add here</button>
+                )}
               </div>
             </div>
           );
         }
         const idu = props.iduById.get(p.iduId);
         return (
-          <div key={p.key ?? i} className="relative flex flex-col items-center">
+          <div key={p.key ?? i} className="idu-branch relative flex flex-col items-center">
             {bus}
-            <div className="absolute -top-6 h-6 w-0.5 bg-[var(--pipe)]" />
+            <div className="pipe-drop absolute -top-6 h-6 w-0.5 bg-[var(--pipe)]" />
+            {(ports || iduLines) && <div className="idu-head flex flex-col items-center">
             {ports && <div className={`mb-1 text-[10px] font-semibold uppercase tracking-wide ${port ? "text-[var(--pipe)]" : "text-[var(--bad)]"}`}>{port ? `Port ${port}` : "No port"}</div>}
             {iduLines && (
-              <div className="flex h-14 shrink-0 flex-col items-center justify-end">
-                <div aria-hidden="true" className="w-0.5 flex-1 bg-[var(--pipe)]" />
+              <div className="idu-line flex h-14 shrink-0 flex-col items-center justify-end">
+                <div aria-hidden="true" className="pipe-v w-0.5 flex-1 bg-[var(--pipe)]" />
                 <LineLength
                   label={`Line to ${p.room}`}
                   pipe={pipeToIdu(p.key)}
                   value={p.pipeLengthFt}
                   onChange={(v) => props.onPatchIdu(p.key, { pipeLengthFt: v })}
                 />
-                <div className="h-2 w-0.5 shrink-0 bg-[var(--pipe)]" />
+                <div className="pipe-v h-2 w-0.5 shrink-0 bg-[var(--pipe)]" />
               </div>
             )}
+            </div>}
             <UnitCard
               kind="IDU"
               icon={idu ? IDU_ICONS[idu.typeName] : undefined}
@@ -1332,10 +1441,11 @@ function Canvas(props: {
           <div className="mb-3 text-[10px] uppercase tracking-[0.22em] text-[var(--muted)]">Your canvas is ready</div>
           <h1 className="text-[24px] font-medium tracking-tight text-[var(--fg)]">Great systems start here.</h1>
           <p className="mt-3 text-[12px] leading-relaxed text-[var(--muted)]">Choose an outdoor unit from the library, then build your system around it.</p>
-          <div className="empty-hint mt-6 inline-flex items-center gap-2 rounded-full px-3 py-2 text-[11px] text-[var(--muted)]"><span aria-hidden="true">↖</span> <span className="hint-mouse">Drag onto the canvas or click to select</span><span className="hint-touch">Tap a unit type to add it</span></div>
+          <button className="add-unit-button mx-auto mt-6" onClick={props.onAddOdu}><span aria-hidden="true">+</span> Add outdoor unit</button>
+          <div className="empty-hint hint-mouse mt-4 text-[11px] text-[var(--muted)]">or drag one in from the library</div>
         </div>
       ) : (
-        <div className="flex flex-col items-center">
+        <div className="canvas-tree flex flex-col items-center">
           <UnitCard
             kind="ODU"
             icon={oduIcon(props.odu)}
@@ -1354,7 +1464,7 @@ function Canvas(props: {
             </div>
           )}
           {/* piping */}
-          <div className="h-3 w-0.5 bg-[var(--pipe)]" />
+          <div className="trunk-v h-3 w-0.5 bg-[var(--pipe)]" />
           {singleZone && props.system.idus.length > 0 && (
             <LineLength label="Line set, outdoor to indoor unit" pipe={pipeToIdu(props.system.idus[0].key)} value={props.system.totalPipeFt} onChange={(v) => props.onPatch({ totalPipeFt: v })} />
           )}
@@ -1366,24 +1476,24 @@ function Canvas(props: {
               onChange={(v) => props.onPatch({ mainLineFt: v })}
             />
           )}
-          <div className="h-3 w-0.5 bg-[var(--pipe)]" />
+          <div className="trunk-v h-3 w-0.5 bg-[var(--pipe)]" />
           {props.system.idus.length > 0 &&
             (layout?.boxes.length ? (
-              <div className="relative flex flex-wrap justify-center gap-x-8 gap-y-8 pt-6">
+              <div className="box-row relative flex flex-wrap justify-center gap-x-8 gap-y-8 pt-6">
                 {layout.boxes.map((b, i) => (
-                  <div key={i} className="relative flex flex-col items-center">
+                  <div key={i} className="box-branch relative flex flex-col items-center">
                     <PipeBus index={i} count={layout.boxes.length} halfGap={16} />
-                    <div className="absolute -top-6 h-6 w-0.5 bg-[var(--pipe)]" />
+                    <div className="pipe-drop absolute -top-6 h-6 w-0.5 bg-[var(--pipe)]" />
                     {layout.boxes.length > 1 && (
-                      <>
+                      <div className="idu-head flex flex-col items-center">
                         <LineLength
                           label={`Joint to branch box ${i + 1}`}
                           pipe={piping.filter((run) => !run.target)[i + 1]}
                           value={props.system.jointToBoxFt?.[i]}
                           onChange={(v) => props.onPatch({ jointToBoxFt: layout.boxes.map((__, j) => (j === i ? (v as number) : (props.system.jointToBoxFt?.[j] as number))) })}
                         />
-                        <div className="h-2 w-0.5 bg-[var(--pipe)]" />
-                      </>
+                        <div className="pipe-v h-2 w-0.5 bg-[var(--pipe)]" />
+                      </div>
                     )}
                     <div className="w-36 rounded border-2 border-[var(--pipe)] bg-[var(--panel)] px-3 py-1 text-center">
                       <img src={branchBoxIcon(b.ports)} alt="" style={{ width: iconWidth(branchBoxIcon(b.ports)) }} className="no-callout pointer-events-none mx-auto my-1" draggable={false} />
@@ -1391,7 +1501,7 @@ function Canvas(props: {
                       <div className="font-mono text-[12px] font-semibold">{b.model}</div>
                       <div className="text-[10px] text-[var(--muted)]">{b.iduKeys.length} / {b.ports} ports</div>
                     </div>
-                    <div className="h-6 w-0.5 bg-[var(--pipe)]" />
+                    <div className="trunk-v h-6 w-0.5 bg-[var(--pipe)]" />
                     {iduRow(b.iduKeys, b.ports, i)}
                   </div>
                 ))}
@@ -1399,9 +1509,19 @@ function Canvas(props: {
             ) : (
               iduRow(props.system.idus.map((p) => p.key))
             ))}
-          <div className={`mt-6 rounded border-2 border-dashed px-6 py-4 text-center text-[var(--muted)] ${props.dragging?.kind === "idu" ? "border-[var(--accent)] text-[var(--accent)]" : "border-[var(--line)]"}`}>
-            {props.system.idus.length >= (props.odu.maxIdus || 1) ? `Max ${props.odu.maxIdus} indoor unit(s) for this outdoor unit` : <><span className="hint-mouse">Drag indoor units here</span><span className="hint-touch">Tap an indoor unit type to add a zone</span></>}
-          </div>
+          {atMax || singleZone && props.system.idus.length > 0 ? (
+            <div className="drop-hint mt-6 rounded border-2 border-dashed border-[var(--line)] px-6 py-4 text-center text-[var(--muted)]">
+              {singleZone ? "Single zone: one indoor unit" : `Max ${props.odu.maxIdus} indoor unit(s) for this outdoor unit`}
+            </div>
+          ) : (
+            <button
+              className={`drop-hint add-idu-slot mt-6 rounded border-2 border-dashed px-6 py-4 text-center ${props.dragging?.kind === "idu" ? "border-[var(--accent)] text-[var(--accent)]" : "border-[var(--line)] text-[var(--fg)]"}`}
+              onClick={() => props.onAddIdu()}
+            >
+              <span className="text-[15px] font-semibold"><span aria-hidden="true">+</span> Add indoor unit</span>
+              <span className="hint-mouse mt-0.5 block text-[11px] text-[var(--muted)]">or drag one in from the library</span>
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -1416,7 +1536,7 @@ function PipeBus({ index, count, halfGap }: { index: number; count: number; half
   const last = index === count - 1;
   return (
     <div
-      className="absolute -top-6 h-0.5 bg-[var(--pipe)]"
+      className="pipe-bus absolute -top-6 h-0.5 bg-[var(--pipe)]"
       style={{ left: first ? "calc(50% - 1px)" : -halfGap, right: last ? "calc(50% - 1px)" : -halfGap }}
     />
   );

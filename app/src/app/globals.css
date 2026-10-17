@@ -298,3 +298,53 @@ option { background: var(--field); color: var(--fg); }
   .hint-mouse { display: none; }
   .hint-touch { display: inline; }
 }
+
+/* Stacked layouts (phones, portrait tablets): the canvas and results grow to their content and the page
+   scrolls, instead of small panels that scroll inside the scrolling page. */
+@media (max-width: 1023px) {
+  .design-split { height: auto; min-height: 0; }
+  .design-split-canvas > .canvas-grid { overflow-x: auto; overflow-y: visible; min-height: 0; }
+  .design-split-handle { display: none; }
+  .design-split-results { height: auto !important; }
+  .design-split-results > .results-panel { height: auto; }
+}
+
+/* Phones: the model picker takes the whole screen with bigger targets. */
+@media (max-width: 639px) {
+  .picker-backdrop { align-items: stretch; }
+  .picker-sheet { height: 100dvh; max-height: none; border-radius: 0; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+  .picker-title { font-size: 17px; }
+  .picker-close { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; font-size: 22px; border-radius: 10px; background: var(--hover); color: var(--fg); }
+  .picker-sheet input[type="search"] { font-size: 16px; padding: 10px 12px; }
+  .picker-row { min-height: 64px; padding: 12px 16px; }
+  .picker-row .text-\[13px\] { font-size: 15px; }
+  .picker-row .text-\[11px\] { font-size: 12px; }
+  .picker-row .truncate { white-space: normal; overflow: visible; }
+}
+
+/* Phones: the piping becomes a ladder. A trunk runs down the left from the outdoor unit, and each indoor unit
+   (or branch box) tees off it in turn, with its line size and length on the branch. */
+@media (max-width: 639px) {
+  .canvas-tree { align-items: flex-start; }
+  .canvas-tree .trunk-v { margin-left: 9px; }
+  .canvas-tree .pipe-bus, .canvas-tree .pipe-drop, .canvas-tree .idu-head .pipe-v { display: none; }
+  .canvas-tree .idu-row, .canvas-tree .box-row { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 16px; padding-top: 0; width: 100%; }
+  .canvas-tree .idu-branch, .canvas-tree .box-branch { align-items: flex-start; padding-left: 28px; }
+  .canvas-tree .idu-branch::before, .canvas-tree .box-branch::before { content: ""; position: absolute; left: 9px; top: -16px; bottom: 0; width: 2px; background: var(--pipe); }
+  .canvas-tree :is(.idu-row, .box-row) > :first-child::before { top: 0; }
+  .canvas-tree :is(.idu-row, .box-row) > :last-child::before { bottom: auto; height: 38px; }
+  .canvas-tree :is(.idu-row, .box-row) > :only-child::before { height: 22px; }
+  .canvas-tree .idu-branch::after, .canvas-tree .box-branch::after { content: ""; position: absolute; left: 9px; top: 21px; width: 19px; height: 2px; background: var(--pipe); }
+  .canvas-tree .idu-branch.is-open::before, .canvas-tree .idu-branch.is-open::after { background: var(--line); }
+  .canvas-tree .idu-head { flex-direction: row; align-items: center; gap: 10px; min-height: 44px; }
+  .canvas-tree .idu-head > .mb-1 { margin-bottom: 0; }
+  .canvas-tree .idu-line { height: auto; flex-direction: row; }
+  .canvas-tree .drop-hint { align-self: stretch; margin-left: 28px; }
+}
+
+/* "+ Add" buttons on the canvas. */
+.add-unit-button { display: inline-flex; align-items: center; gap: 8px; min-height: 48px; padding: 12px 22px; border-radius: 12px; background: var(--accent); color: #fff; font-size: 15px; font-weight: 600; box-shadow: 0 6px 20px #0003; }
+.add-unit-button:hover { filter: brightness(1.08); }
+.add-idu-slot { display: block; min-width: 220px; cursor: pointer; }
+.add-idu-slot:hover { border-color: var(--accent); color: var(--accent); }
+.add-here-button { margin-top: 2px; padding: 4px 10px; border-radius: 6px; background: var(--accent); color: #fff; font-size: 12px; font-weight: 600; }
