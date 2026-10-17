@@ -351,3 +351,12 @@ option { background: var(--field); color: var(--fg); }
 
 /* No double-tap zoom on touch screens. */
 html { touch-action: manipulation; }
+
+/* Branch box size toggle and the "+ Add branch box" slot. */
+.box-size-button { white-space: nowrap; padding: 2px 7px; border-radius: 5px; border: 1px solid var(--line); background: var(--field); color: var(--muted); font-size: 10px; font-weight: 600; }
+.box-size-button.is-on { border-color: var(--pipe); background: var(--pipe); color: #fff; }
+.add-box-slot { min-width: 220px; }
+@media (max-width: 639px) {
+  .canvas-tree .add-box-slot { align-self: stretch; margin-left: 28px; }
+  .box-size-button { padding: 5px 8px; font-size: 11px; }
+}

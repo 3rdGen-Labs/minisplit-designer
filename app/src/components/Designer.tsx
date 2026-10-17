@@ -1339,6 +1339,9 @@ function BlockedDialog(props: { model: string; errors: string[]; onClose: () => 
 
 /* ---------- canvas ---------- */
 
+/** Residential branch-box systems take at most two boxes (engine error 1017). */
+const MAX_BRANCH_BOXES = 2;
+
 function Canvas(props: {
   system: SystemDesign;
   odu?: PaletteOdu;
@@ -1397,6 +1400,28 @@ function Canvas(props: {
   const full = atMax || !!props.addBlocked;
   const fullTitle = atMax ? "Max indoor units" : /port/i.test(props.addBlocked ?? "") ? "No open ports" : /capacity|btu|combination/i.test(props.addBlocked ?? "") ? "Max capacity reached" : "Can't add another indoor unit";
   const fullDetail = atMax ? `${props.system.idus.length} of ${props.odu?.maxIdus} indoor units on this outdoor unit` : props.addBlocked;
+
+  // Branch boxes by hand: the first change switches the system from automatic boxes to boxPorts, keeping today's layout.
+  const boxSizes = (): (3 | 5)[] => props.system.boxPorts ?? layout?.boxes.map((b) => (b.ports === 3 ? 3 : 5)) ?? [];
+  const canAddBox = !!props.odu?.branchBox && !!layout?.boxes.length && layout.boxes.length < MAX_BRANCH_BOXES;
+  const addBox = (ports: 3 | 5) => props.onPatch({ boxPorts: [...boxSizes(), ports] });
+  const setBoxPorts = (i: number, ports: 3 | 5) => props.onPatch({ boxPorts: boxSizes().map((p, j) => (j === i ? ports : p)) });
+  const removeBox = (i: number) => {
+    const sizes = boxSizes().filter((_, j) => j !== i);
+    const shift = <T,>(list?: T[]) => list?.filter((_, j) => j !== i);
+    const capped = Object.fromEntries(
+      Object.entries(props.system.cappedPorts ?? {}).flatMap(([k, v]) => (Number(k) === i ? [] : [[String(Number(k) > i ? Number(k) - 1 : Number(k)), v]])),
+    );
+    props.onPatch({
+      // Down to nothing: back to automatic boxes.
+      boxPorts: sizes.length ? sizes : undefined,
+      cappedPorts: capped,
+      jointToBoxFt: shift(props.system.jointToBoxFt),
+      boxRooms: shift(props.system.boxRooms),
+      // Units that were on the removed box go back to automatic placement; later boxes move up one.
+      idus: props.system.idus.map((p) => (p.box == null ? p : p.box === i ? { ...p, box: undefined, port: undefined } : p.box > i ? { ...p, box: p.box - 1 } : p)),
+    });
+  };
 
   // An open, uncapped branch-box port already offers "+ Add here", so the bottom "+ Add indoor unit" would be a second way to do the same thing.
   const hasOpenPort = !!layout?.boxes.some((b, i) => portSlots(b.iduKeys, b.ports, i).some((slot) => slot.port && !slot.key && !cappedOn(i).includes(slot.port)));
@@ -1540,11 +1565,17 @@ function Canvas(props: {
                         <div className="pipe-v h-2 w-0.5 bg-[var(--pipe)]" />
                       </div>
                     )}
-                    <div className="w-36 rounded border-2 border-[var(--pipe)] bg-[var(--panel)] px-3 py-1 text-center">
+                    <div className="branch-box-card relative w-36 rounded border-2 border-[var(--pipe)] bg-[var(--panel)] px-3 py-1 text-center">
+                      <button className="absolute right-1 top-1 px-1 text-[12px] text-[var(--muted)] hover:text-[var(--bad)]" aria-label={`Remove branch box ${i + 1}`} title="Remove this branch box" onClick={(e) => { e.stopPropagation(); removeBox(i); }}>✕</button>
                       <img src={branchBoxIcon(b.ports)} alt="" style={{ width: iconWidth(branchBoxIcon(b.ports)) }} className="no-callout pointer-events-none mx-auto my-1" draggable={false} />
                       <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--pipe)]">Branch box {i + 1}</div>
                       <div className="font-mono text-[12px] font-semibold">{b.model}</div>
                       <div className="text-[10px] text-[var(--muted)]">{b.iduKeys.length} / {b.ports} ports</div>
+                      <div className="mb-1 mt-1.5 flex justify-center gap-1" role="radiogroup" aria-label={`Branch box ${i + 1} size`}>
+                        {([3, 5] as const).map((n) => (
+                          <button key={n} role="radio" aria-checked={b.ports === n} onClick={(e) => { e.stopPropagation(); setBoxPorts(i, n); }} className={`box-size-button ${b.ports === n ? "is-on" : ""}`}>{n}-port</button>
+                        ))}
+                      </div>
                     </div>
                     <div className="trunk-v h-6 w-0.5 bg-[var(--pipe)]" />
                     {iduRow(b.iduKeys, b.ports, i)}
@@ -1554,6 +1585,16 @@ function Canvas(props: {
             ) : (
               iduRow(props.system.idus.map((p) => p.key))
             ))}
+          {/* A full system only gets the box option when the limit is ports; boxes add no capacity. */}
+          {canAddBox && !atMax && !(props.addBlocked && !/port/i.test(props.addBlocked)) && (
+            <div className="drop-hint add-box-slot mt-6 rounded border-2 border-dashed border-[var(--line)] px-4 py-3 text-center">
+              <div className="text-[13px] font-semibold">+ Add branch box</div>
+              <div className="mt-2 flex justify-center gap-2">
+                <button className="add-here-button" onClick={() => addBox(3)}>3-port</button>
+                <button className="add-here-button" onClick={() => addBox(5)}>5-port</button>
+              </div>
+            </div>
+          )}
           {hasOpenPort && !full ? null : full || (singleZone && props.system.idus.length > 0) ? (
             <div className="drop-hint system-full mt-6 rounded border-2 border-dashed border-[var(--line)] px-6 py-4 text-center text-[var(--muted)]">
               {singleZone ? "Single zone: one indoor unit" : (
