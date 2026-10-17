@@ -1356,6 +1356,9 @@ function Canvas(props: {
 
   const atMax = !!props.odu && props.system.idus.length >= (props.odu.maxIdus || 1);
 
+  // An open, uncapped branch-box port already offers "+ Add here", so the bottom "+ Add indoor unit" would be a second way to do the same thing.
+  const hasOpenPort = !!layout?.boxes.some((b, i) => portSlots(b.iduKeys, b.ports, i).some((slot) => slot.port && !slot.key && !cappedOn(i).includes(slot.port)));
+
   // A plain function, not a component: defined inside Canvas, a component would remount (and drop input focus) on every render.
   const iduRow = (rowKeys: string[], ports?: number, box = 0) => {
     const slots = (ports ? portSlots(rowKeys, ports, box) : rowKeys.map((key) => ({ port: undefined as string | undefined, key }))).filter(
@@ -1509,7 +1512,7 @@ function Canvas(props: {
             ) : (
               iduRow(props.system.idus.map((p) => p.key))
             ))}
-          {atMax || singleZone && props.system.idus.length > 0 ? (
+          {hasOpenPort && !atMax ? null : atMax || (singleZone && props.system.idus.length > 0) ? (
             <div className="drop-hint mt-6 rounded border-2 border-dashed border-[var(--line)] px-6 py-4 text-center text-[var(--muted)]">
               {singleZone ? "Single zone: one indoor unit" : `Max ${props.odu.maxIdus} indoor unit(s) for this outdoor unit`}
             </div>
