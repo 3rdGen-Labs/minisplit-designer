@@ -69,7 +69,9 @@ async function fetchEvaluation(sys: SystemDesign, settings: ProjectSettings, sig
 }
 
 /** What the left-hand tiles carry: a unit *type*. The exact model is picked after the drop. */
-type DragItem = { kind: "odu"; system: SystemKey } | { kind: "idu"; typeName: string };
+type PickItem = { kind: "odu"; system: SystemKey } | { kind: "idu"; typeName: string };
+/** Branch box tiles skip the picker: tapping or dropping one adds a box of that size. */
+type DragItem = PickItem | { kind: "box"; ports: 3 | 5 };
 
 /** Outdoor-unit families shown before anything is placed; the one you pick sets the system type. */
 const FAMILY_LABEL: Record<SystemKey, string> = {
@@ -78,7 +80,7 @@ const FAMILY_LABEL: Record<SystemKey, string> = {
   MXZ: "Multi-zone (MXZ)",
   MXZSM: "Smart Multi",
 };
-const itemLabel = (item: DragItem) => (item.kind === "odu" ? FAMILY_LABEL[item.system] : item.typeName);
+const itemLabel = (item: DragItem) => (item.kind === "odu" ? FAMILY_LABEL[item.system] : item.kind === "box" ? `${item.ports}-port branch box` : item.typeName);
 
 /** Rendered icons (design/blender/units.py). Types without a render get a placeholder. */
 const U = (n: string) => appPath(`/units/${n}.webp`);
@@ -102,7 +104,7 @@ const IDU_ICONS: Record<string, string> = {
   "Cased Coil": U("cased-coil"),
   "Floor-Standing Type (Exposed)": U("floor-console"),
 };
-const iconFor = (item: DragItem) => (item.kind === "odu" ? FAMILY_ICON[item.system] : IDU_ICONS[item.typeName]);
+const iconFor = (item: DragItem) => (item.kind === "odu" ? FAMILY_ICON[item.system] : item.kind === "box" ? branchBoxIcon(item.ports) : IDU_ICONS[item.typeName]);
 /** Real-world width of each rendered unit (inches), so canvas icons share one scale. */
 const ICON_WIDTH_IN: Record<string, number> = {
   [U("wall-premium")]: 31.5,
@@ -150,7 +152,7 @@ export default function Designer({ palette }: { palette: Palette }) {
   const [evals, setEvals] = useState<Record<string, Evaluation>>({});
   const [dragging, setDragging] = useState<DragItem | null>(null);
   const [bottomTab, setBottomTab] = useState<"errors" | "bom" | "piping">("errors");
-  const [picker, setPicker] = useState<DragItem | null>(null);
+  const [picker, setPicker] = useState<PickItem | null>(null);
   // "+ Add" on the canvas: pick a family / unit type first. A port target puts the new unit on that branch-box port.
   const [chooser, setChooser] = useState<"odu" | "idu" | null>(null);
   const [addTarget, setAddTarget] = useState<{ box: number; port: string } | null>(null);
@@ -361,6 +363,15 @@ export default function Designer({ palette }: { palette: Palette }) {
     }));
     setSelection({ systemId: active.id, target: key });
   };
+  // Adding a box switches to hand-picked boxes, keeping the ones on the canvas (same as the canvas "+ Add branch box").
+  const boxCount = active.boxPorts?.length ?? evaluation?.layout?.boxes.length ?? 0;
+  const addBox = (ports: 3 | 5) => {
+    if (boxCount >= MAX_BRANCH_BOXES) return;
+    const current = (evaluation?.layout?.boxes ?? []).map((b) => (b.ports === 3 ? 3 : 5) as 3 | 5);
+    updateSystem(active.id, (s) => ({ ...s, boxPorts: [...(s.boxPorts ?? current), ports] }));
+    setSelection({ systemId: active.id, target: "odu" });
+  };
+  const pick = (item: DragItem) => (item.kind === "box" ? addBox(item.ports) : setPicker(item));
 
   // Picking a unit by hand: try it first and refuse it if it adds an error. Errors that more units would clear
   // (too few units, under minimum capacity) don't count, or a multi-zone could never be built up one unit at a time.
@@ -395,7 +406,7 @@ export default function Designer({ palette }: { palette: Palette }) {
     setDragging(null);
     const item = e.active.data.current as DragItem | undefined;
     if (!item || !e.over) return;
-    setPicker(item);
+    pick(item);
   };
 
   const addSystem = () => {
@@ -534,7 +545,9 @@ export default function Designer({ palette }: { palette: Palette }) {
               showLegacy={!!active.showLegacy}
               refrigerant={active.refrigerantFilter}
               onRefrigerant={(r) => updateSystem(active.id, (s) => ({ ...s, refrigerantFilter: r }))}
-              onTap={setPicker}
+              branchBox={!!odu?.branchBox}
+              canAddBox={boxCount < MAX_BRANCH_BOXES}
+              onTap={pick}
             />
           </aside>
 
@@ -973,6 +986,9 @@ interface TileShelfProps {
   showLegacy: boolean;
   refrigerant: RefrigerantFilter;
   onRefrigerant: (r: RefrigerantFilter) => void;
+  /** Branch-box outdoor unit: show the branch box tiles. */
+  branchBox: boolean;
+  canAddBox: boolean;
   onTap: (item: DragItem) => void;
 }
 
@@ -999,11 +1015,13 @@ const isPhone = () => typeof window !== "undefined" && window.matchMedia("(max-w
 function EquipmentLibrary(props: TileShelfProps) {
   const [outdoorOpen, setOutdoorOpen] = useState(!props.hasOdu);
   const [indoorOpen, setIndoorOpen] = useState(props.hasOdu);
+  const [boxesOpen, setBoxesOpen] = useState(true);
   // Phones add units from the canvas "+ Add" buttons, so the library starts collapsed there.
   useEffect(() => {
     if (!isPhone()) return;
     setOutdoorOpen(false);
     setIndoorOpen(false);
+    setBoxesOpen(false);
   }, []);
   const families = useMemo(() => familyCounts(props.palette, props.showLegacy, props.refrigerant), [props.palette, props.showLegacy, props.refrigerant]);
   const types = useMemo(
@@ -1044,11 +1062,23 @@ function EquipmentLibrary(props: TileShelfProps) {
           </>
         ) : <Empty>Choose an outdoor unit first to see compatible indoor units.</Empty>}
       </EquipmentGroup>
+      {props.hasOdu && props.branchBox && (
+        <EquipmentGroup title="Branch boxes" kind="box" open={boxesOpen} onToggle={() => setBoxesOpen((open) => !open)}>
+          <p className="px-3 pt-3 text-[11px] leading-relaxed text-[var(--muted)]">
+            {props.canAddBox ? "Optional. Add a box yourself, or leave it and boxes are picked for you." : `This outdoor unit takes ${MAX_BRANCH_BOXES} branch boxes at most.`}
+          </p>
+          {props.canAddBox && (
+            <div className="grid grid-cols-2 gap-2 p-3">
+              {([3, 5] as const).map((ports) => <Tile key={ports} item={{ kind: "box", ports }} label={`${ports}-port box`} onTap={props.onTap} />)}
+            </div>
+          )}
+        </EquipmentGroup>
+      )}
     </div>
   );
 }
 
-function EquipmentGroup({ title, kind, open, onToggle, children }: { title: string; kind: "outdoor" | "indoor"; open: boolean; onToggle: () => void; children: React.ReactNode }) {
+function EquipmentGroup({ title, kind, open, onToggle, children }: { title: string; kind: "outdoor" | "indoor" | "box"; open: boolean; onToggle: () => void; children: React.ReactNode }) {
   const id = useId();
   return (
     <section className={`equipment-group equipment-group-${kind}`} aria-label={title}>
@@ -1064,7 +1094,7 @@ function EquipmentGroup({ title, kind, open, onToggle, children }: { title: stri
 }
 
 function Tile({ item, label, count, onTap }: { item: DragItem; label: string; count?: number; onTap: (item: DragItem) => void }) {
-  const id = item.kind === "odu" ? `tile-odu-${item.system}` : `tile-${item.typeName}`;
+  const id = item.kind === "odu" ? `tile-odu-${item.system}` : item.kind === "box" ? `tile-box-${item.ports}` : `tile-${item.typeName}`;
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id, data: item });
   return (
     <button
@@ -1100,7 +1130,7 @@ const SEARCH_MODES: { value: SearchMode; label: string }[] = [
 const SEARCH_MODE_KEY = "zonespec.searchMode";
 
 function ModelPicker(props: {
-  item: DragItem;
+  item: PickItem;
   palette: Palette;
   system: SystemKey;
   hasOdu: boolean;
@@ -1252,7 +1282,7 @@ function TypeChooser(props: {
   refrigerant: RefrigerantFilter;
   onRefrigerant: (r: RefrigerantFilter) => void;
   port?: string;
-  onPick: (item: DragItem) => void;
+  onPick: (item: PickItem) => void;
   onClose: () => void;
 }) {
   useEffect(() => {
@@ -1261,7 +1291,7 @@ function TypeChooser(props: {
     return () => window.removeEventListener("keydown", onKey);
   }, [props]);
   const odu = props.kind === "odu";
-  const items: { item: DragItem; label: string; count: number }[] = odu
+  const items: { item: PickItem; label: string; count: number }[] = odu
     ? familyCounts(props.palette, props.showLegacy, props.refrigerant).map(([system, count]) => ({ item: { kind: "odu", system }, label: FAMILY_LABEL[system], count }))
     : iduTypeCounts(props.palette, props.system, props.hasOdu, props.compatible, props.showLegacy).map(([typeName, count]) => ({ item: { kind: "idu", typeName }, label: typeName, count }));
   const title = odu ? "Add an outdoor unit" : props.port ? `Add an indoor unit on port ${props.port}` : "Add an indoor unit";
@@ -1538,7 +1568,7 @@ function Canvas(props: {
           {singleZone && props.system.idus.length > 0 && (
             <LineLength label="Line set, outdoor to indoor unit" pipe={pipeToIdu(props.system.idus[0].key)} value={props.system.totalPipeFt} onChange={(v) => props.onPatch({ totalPipeFt: v })} />
           )}
-          {props.odu.branchBox && props.system.idus.length > 0 && (
+          {props.odu.branchBox && (props.system.idus.length > 0 || !!layout?.boxes.length) && (
             <LineLength
               label={(layout?.boxes.length ?? 0) > 1 ? "Main line, outdoor unit to joint" : "Main line, outdoor unit to branch box"}
               pipe={mainPipe}
@@ -1547,7 +1577,7 @@ function Canvas(props: {
             />
           )}
           <div className="trunk-v h-3 w-0.5 bg-[var(--pipe)]" />
-          {props.system.idus.length > 0 &&
+          {(props.system.idus.length > 0 || !!layout?.boxes.length) &&
             (layout?.boxes.length ? (
               <div className="box-row relative flex flex-wrap justify-center gap-x-8 gap-y-8 pt-6">
                 {layout.boxes.map((b, i) => (
@@ -1606,7 +1636,7 @@ function Canvas(props: {
             </div>
           ) : (
             <button
-              className={`drop-hint add-idu-slot mt-6 rounded border-2 border-dashed px-6 py-4 text-center ${props.dragging?.kind === "idu" ? "border-[var(--accent)] text-[var(--accent)]" : "border-[var(--line)] text-[var(--fg)]"}`}
+              className={`drop-hint add-idu-slot mt-6 rounded border-2 border-dashed px-6 py-4 text-center ${props.dragging?.kind === "idu" || props.dragging?.kind === "box" ? "border-[var(--accent)] text-[var(--accent)]" : "border-[var(--line)] text-[var(--fg)]"}`}
               onClick={() => props.onAddIdu()}
             >
               <span className="text-[15px] font-semibold"><span aria-hidden="true">+</span> Add indoor unit</span>

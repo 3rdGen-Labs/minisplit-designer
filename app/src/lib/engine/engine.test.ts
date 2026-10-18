@@ -136,6 +136,10 @@ describe("Smart Multi (residential mode)", () => {
     const units = Array.from({ length: 3 }, () => place(idu("MSZ-FX09NL", "MXZ")));
     expect(codes(design(sys, odu("MXZ-SM48NL"), units, { boxPorts: [3], cappedPorts: { "0": ["C"] } }))).toContain("BOX_PORTS");
   });
+  it("shows branch boxes before any indoor units are placed", () => {
+    expect(evaluate(design("MXZSM", odu("MXZ-SM48NL"), [])).layout?.boxes.map((b) => b.ports)).toEqual([3]);
+    expect(evaluate(design("MXZSM", odu("MXZ-SM48NL"), [], { boxPorts: [5, 3] })).layout?.boxes.map((b) => b.ports)).toEqual([5, 3]);
+  });
 });
 
 describe("controls", () => {
