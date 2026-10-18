@@ -248,9 +248,10 @@ export function layoutBoxes(ctx: Ctx): Box[] {
 function branchBoxType(ctx: Ctx) {
   const odu = ctx.odu!;
   const raw = odu.raw;
-  if (!ctx.placed.length) return;
   const boxes = layoutBoxes(ctx);
   ctx.layout = { boxes: boxes.map((b) => ({ model: b.model, ports: b.ports, iduKeys: b.members.map((m) => m.p.key) })) };
+  // No indoor units yet: still lay out the boxes (chosen ones, or one automatic box) so they show on the canvas.
+  if (!ctx.placed.length) return;
 
   if (boxes.length > 2) ctx.error("1017", `${odu.model} supports at most two branch boxes.`);
 
