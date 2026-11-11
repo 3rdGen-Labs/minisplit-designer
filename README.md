@@ -54,7 +54,7 @@ The production build downloads Geist fonts from Google. Allow outbound access du
 | Catalog adapter | `app/src/lib/catalog.ts` | Reads generated JSON and normalizes model records |
 | Rules engine | `app/src/lib/engine/` | Compatibility, piping, controls, accessories, charge, A2L checks, capacity estimates, and BOM |
 | Evaluation API | `POST /api/evaluate` | Calls the same server-side engine used by the app |
-| Submittal PDF | `POST /api/pdf`, `GET /api/pdf?d=`, `app/src/lib/pdf/` | One-page-per-system PDF (equipment, checks, piping, charge, capacity, electrical, BOM); nothing is stored |
+| Submittal PDF | `POST /api/pdf`, `GET /api/pdf?d=`, `app/src/lib/pdf/` | Branded PDF with the business logo, unit artwork and a piping diagram per system (equipment, checks, piping, charge, capacity, electrical, BOM); nothing is stored. Artwork PNGs are made from `app/public/units` by `design/pdf-assets.py` |
 | Project import | `POST /api/import-dsb`, `app/src/lib/dsb-import.ts` | Reads an uploaded Access-format DSB project using `mdb-reader` |
 | Equipment data | `app/src/data/*.json` | Bundled equipment data used by the engine; see the release notes for its status |
 | Site configuration | `app/src/lib/site.ts` | Name, logos, business card, footer credits, and path helper |

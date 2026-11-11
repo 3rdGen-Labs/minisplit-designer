@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { deflateRawSync } from "node:zlib";
-import { decodePDFRawStream, PDFDocument, PDFRawStream } from "pdf-lib";
+import { decodePDFRawStream, PDFDocument, PDFName, PDFRawStream } from "pdf-lib";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { GET, POST } from "@/app/api/pdf/route";
@@ -108,15 +108,15 @@ describe("PDF rendering", () => {
       "Independent planning tool",
       "Garage -> gym ok",
     ])
-      expect(text, s).toContain(s);
+      expect(text.toLowerCase(), s).toContain(s.toLowerCase());
     expect(text).toMatch(/Page 1 of \d+/);
   });
 
   it("leaves out the cover page for one system", async () => {
     const one = await renderDesignPdf({ systems: [job.systems[0]] });
     const text = await pdfText(one);
-    expect(text).not.toContain("System summary");
-    expect(text).toContain("Branch boxes and ports");
+    expect(text.toLowerCase()).not.toContain("system summary");
+    expect(text.toLowerCase()).toContain("branch boxes and ports");
   });
 
   it("does not throw on text Helvetica can't encode", async () => {
@@ -124,6 +124,20 @@ describe("PDF rendering", () => {
     const text = await pdfText(await renderDesignPdf(odd));
     expect(text).toContain("room >= 2");
     expect(text).toContain("Sala ? ñ");
+  });
+
+  it("draws the unit artwork and the logo", async () => {
+    const doc = await PDFDocument.load(await renderDesignPdf({ systems: [job.systems[0]] }));
+    const images = [...doc.context.enumerateIndirectObjects()].filter(([, o]) => o instanceof PDFRawStream && o.dict.get(PDFName.of("Subtype")) === PDFName.of("Image"));
+    // Outdoor unit, branch box and two indoor types (each PNG with transparency also carries a mask).
+    expect(images.length).toBeGreaterThanOrEqual(4);
+    expect(await pdfText(await doc.save())).not.toContain("3rdGen Building Systems"); // vector logo, not the text fallback
+  });
+
+  it("wraps a long row of indoor units in the diagram", async () => {
+    const many = { ...job.systems[1], idus: Array.from({ length: 11 }, (_, i) => ({ ...job.systems[1].idus[0], key: `u${i}`, room: `Room ${i + 1}` })) };
+    const text = await pdfText(await renderDesignPdf({ systems: [many] }));
+    expect(text).toContain("Room 11");
   });
 
   it("still renders a system the engine can't place", async () => {

@@ -56,7 +56,7 @@ The server instructions tell the AI not to invent line lengths, heights or floor
 | `app/src/app/api/mcp/route.ts` | HTTP route; body-size cap; creates a transport and server per request |
 | `app/src/lib/mcp.ts` | Tool definitions (Zod schemas), calls into the catalog and engine |
 | `app/src/lib/lookup.ts` | Model-number lookup; when a model is listed under several systems, picks the record that connects to the outdoor unit |
-| `app/src/app/api/pdf/route.ts`, `app/src/lib/pdf/` | PDF route, request schema and link encoding, page layout and rendering (pdf-lib, standard Helvetica) |
+| `app/src/app/api/pdf/route.ts`, `app/src/lib/pdf/` | PDF route, request schema and link encoding, page layout and rendering (pdf-lib, standard Helvetica). The header uses the logo from `site.ts` (a path-only SVG is drawn as vectors, or a PNG); unit artwork lives in `lib/pdf/assets/`, rebuilt with `python3 design/pdf-assets.py` |
 | `app/src/lib/site.ts` | `site.mcp.note`: the optional line appended to each evaluation result (the reference deployment uses it for a short 3rdGen note). Set it to `""` when you rebrand |
 
 To keep the endpoint off your own deployment, delete `app/src/app/api/mcp/`.
