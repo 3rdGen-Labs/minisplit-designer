@@ -4,7 +4,8 @@
 import "server-only";
 import MDBReader from "mdb-reader";
 import { isExcludedSmartMulti } from "./equipment-scope.mjs";
-import { indoorUnits, outdoorUnits, tables, type IndoorUnit, type OutdoorUnit } from "./catalog";
+import { tables, type IndoorUnit, type OutdoorUnit } from "./catalog";
+import { findIndoorUnit, findOutdoorUnit } from "./lookup";
 import type { BranchBoxPlacement, IduPlacement, SystemDesign, SystemKey } from "./design";
 
 // ---------------------------------------------------------------------------------------------
@@ -400,21 +401,8 @@ const OUT_OF_SCOPE: Record<number, string> = { 6: "S-Series PUMY (VRF)", 10: "PH
 
 const norm = (m: string) => m.trim().toUpperCase();
 
-const oduByModel = new Map<string, OutdoorUnit[]>();
-for (const u of outdoorUnits) oduByModel.set(norm(u.model), [...(oduByModel.get(norm(u.model)) ?? []), u]);
-const iduByModel = new Map<string, IndoorUnit[]>();
-for (const u of indoorUnits) iduByModel.set(norm(u.model), [...(iduByModel.get(norm(u.model)) ?? []), u]);
-const rank = (st: string) => (st === "current" ? 0 : st === "legacy" ? 1 : 2);
-
-export function matchOdu(model: string, system: SystemKey): OutdoorUnit | undefined {
-  const c = oduByModel.get(norm(model)) ?? [];
-  return [...c].sort((a, b) => Number(a.system !== system) - Number(b.system !== system) || rank(a.status) - rank(b.status))[0];
-}
-
-export function matchIdu(model: string, system: SystemKey): IndoorUnit | undefined {
-  const c = iduByModel.get(norm(model)) ?? [];
-  return [...c].sort((a, b) => Number(!a.systems.includes(system)) - Number(!b.systems.includes(system)) || rank(a.status) - rank(b.status))[0];
-}
+export const matchOdu = (model: string, system: SystemKey): OutdoorUnit | undefined => findOutdoorUnit(model, system);
+export const matchIdu = (model: string, system: SystemKey, odu?: OutdoorUnit): IndoorUnit | undefined => findIndoorUnit(model, { odu, system });
 
 const WIFI_LRC_TYPE = 9;
 const wifiModels = new Set((tables.lrc_list ?? []).filter((r) => Number(r.fkLRCType_Id) === WIFI_LRC_TYPE).map((r) => norm(String(r.strModelNumber))));
@@ -494,7 +482,7 @@ export function toDesigns(p: DsbProject): { systems: SystemDesign[]; warnings: s
     const sharedGroupsWarned = new Set<string>();
     const controlledGroups = new Set<string>();
     for (const du of ds.idus) {
-      const u = matchIdu(du.model, system);
+      const u = matchIdu(du.model, system, odu);
       if (!u) {
         warnings.push(`${label}: indoor unit ${du.model}${du.room ? ` (${du.room})` : ""} skipped, it is not in the catalog.`);
         continue;
