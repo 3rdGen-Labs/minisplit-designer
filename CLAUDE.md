@@ -11,7 +11,7 @@ This repository is public and open source (MIT-0). Everything committed, pushed,
 - Calculation changes cite a public manufacturer reference (document, revision, page) and add a focused regression test.
 - Keep the independent-tool and verification notices accurate. Mitsubishi Electric names identify equipment only.
 - Branding lives in `app/src/lib/site.ts`. Keep it replaceable: no hard-coded business names or logos elsewhere.
-- The app stores nothing on the server. The open project lives in the browser's localStorage; PDF and MCP links carry their data in the URL.
+- The app stores nothing on the server. The open project lives in the browser's localStorage, in a project file the user saves, or with the host page when embedded (`app/src/lib/embed.ts`); PDF and MCP links carry their data in the URL.
 
 ## Before every pull request
 

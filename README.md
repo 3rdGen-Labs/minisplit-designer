@@ -64,6 +64,8 @@ The server builds the initial equipment palette. Browser edits go to the evaluat
 
 Projects and preferences are stored in browser `localStorage`, not a project database. Design details are still sent to the server for evaluation. DSB imports upload the entire selected file to the host for parsing; the route does not explicitly save it to disk, but hosting logs and infrastructure have their own policies. Avoid uploading customer information to a host you do not trust. Clearing browser storage loses saved work; projects do not synchronize between devices.
 
+To keep a project or move it to another device, use **Project actions → Save project file**. It downloads the project as JSON (`*.msd.json`, format `mini-split-designer.project`, see `app/src/lib/project-file.ts`); **Open project file** loads it back. The file stays on your computer.
+
 Current scope: US-market Mitsubishi M & S single-zone, P-Series, MXZ, and single-phase residential Smart Multi. Three-phase Smart Multi, VRF / City Multi, load calculations, sensible capacity, and several advanced configurations are outside the modeled scope. DSB import still needs validation against representative real project files. Inspect the response's `unchecked` list as well as its issues.
 
 ## Replace or remove the branding
@@ -99,6 +101,24 @@ NEXT_PUBLIC_BASE_PATH=/designer pnpm start
 Use no trailing slash. For local development use `NEXT_PUBLIC_BASE_PATH=/designer pnpm dev`. Visit `/designer`. Change the value to another path if you prefer; omit it for the domain root. Next.js fixes `basePath` at build time, so changing the deployment setting requires a rebuild. See the [Next.js basePath documentation](https://nextjs.org/docs/app/api-reference/config/next-config-js/basePath).
 
 Configure your existing site's reverse proxy to forward `/designer` and everything below `/designer/` to this app **with that prefix preserved**, including its API and `_next` asset requests. An ordinary link to the designer works without changing your main site's framework. An iframe is another option if your site's framing policy allows it; test its sizing and browser storage behavior on your host.
+
+### Embed it in another web app
+
+A web app that keeps its own records (for example, a job database) can embed the designer and store the project itself. Add the app's origin to `site.embed.allowedOrigins` in `app/src/lib/site.ts`, or set `NEXT_PUBLIC_EMBED_ORIGINS` to a comma-separated list of origins at build time, then load the designer in an iframe:
+
+```html
+<iframe src="https://designer.example.com/?embed=1&host=https://app.example.com"></iframe>
+```
+
+For an allowed `host`, the designer talks to the parent page with `postMessage` (types in `app/src/lib/embed.ts`):
+
+| Direction | Message | When |
+| --- | --- | --- |
+| designer → host | `{ source: "mini-split-designer", type: "ready" }` | The designer has loaded and waits for a project. |
+| host → designer | `{ type: "load", project }` | Opens `project` (a project file or `{ name, systems, settings }`). |
+| designer → host | `{ source: "mini-split-designer", type: "change", project, summary }` | After edits (debounced). `summary` lists each system's outdoor and indoor models and its check status. |
+
+Messages are sent only to that origin and accepted only from the parent window at that origin. In this mode the designer does not read or overwrite the browser's saved project, and **New project** is hidden. For a submittal on record, the host's server can POST `{ job, address, systems }` to `/api/pdf` and store the PDF it returns. Any other page can still frame the designer; it then runs as the normal standalone app.
 
 For several tools on the same origin, note that `zonespec.*` localStorage keys are shared across paths. Rename those keys consistently in `Designer.tsx`, `DesignSplit.tsx`, and `GuidedTutorial.tsx` if each copy needs separate saved projects.
 
