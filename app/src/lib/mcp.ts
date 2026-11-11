@@ -1,11 +1,12 @@
 import "server-only";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { iduById, indoorUnits, outdoorUnits } from "./catalog";
+import { iduById, indoorUnits, outdoorUnits, type OutdoorUnit } from "./catalog";
 import { findIndoorUnit, findOutdoorUnit } from "./lookup";
-import { DEFAULT_CONDITIONS, type IduPlacement, type SystemDesign } from "./design";
+import { DEFAULT_CONDITIONS, type DesignConditions, type IduPlacement, type SystemDesign } from "./design";
 import { evaluate, isCompatible } from "./engine";
-import { site } from "./site";
+import { appPath, site } from "./site";
+import { encodePdfRequest, MAX_LINK_PAYLOAD, MAX_PDF_SYSTEMS } from "./pdf/request";
 import { wetBulbFromRh } from "./psychro.mjs";
 import designWeather from "@/data/design-locations.json";
 
@@ -44,10 +45,102 @@ const NOTE = ["Independent tool, not affiliated with Mitsubishi Electric. Verify
 const INSTRUCTIONS = `${site.name}: residential Mitsubishi Electric ductless (air-to-air) system builder. Covers M & S-Series single zone, P-Series, MXZ multi-zone and single-phase Smart Multi; no VRF/City Multi, no hydronic.
 Workflow: find an outdoor unit with list_outdoor_units, find compatible indoor units with list_indoor_units (pass the outdoor unit), then call evaluate_design.
 For capacity in the customer's climate pass location ("City, ST" or airport code) or the design temperatures.
+For a client package or submittal, call export_design_pdf with the same inputs (one entry per system, plus the job name and address if the user gives them) and give the user the link. Anyone with the link can open it.
 Line lengths drive the line-set takeoff and the additional refrigerant charge; floor areas and mounting heights drive the R454B checks. Never invent these: ask the user, or leave them out and report what the result lists as unchecked.
 Results are planning estimates, not manufacturer approval.`;
 
-export function createMcpServer(): McpServer {
+const placement = z.object({
+  indoorUnit: ref.describe("Indoor unit id or exact model number"),
+  room: z.string().max(60).optional(),
+  pipeLengthFt: ft("Multi-zone: actual line length from the outdoor unit (or branch box) to this unit"),
+  bends: z.number().int().min(0).max(50).optional().describe("Field bends on this unit's line"),
+  heightFt: ft("Height of this unit relative to the outdoor unit (negative = below)"),
+  floorAreaSqFt: sqft("R454B: floor area this unit serves"),
+  installHeightFt: ft("R454B: mounting height of the unit above the floor"),
+  inConditionedSpace: z.boolean().optional().describe("R454B coil units (multi-position, cased coil): installed inside the conditioned space?"),
+  installedRoomSqFt: sqft("R454B coil units: floor area of the room the unit sits in (closet, attic)"),
+  controller: z.string().max(40).optional().describe("Controller model; leave out for the default"),
+  wifiAdapter: z.string().max(40).optional(),
+});
+
+const designShape = {
+    outdoorUnit: ref.describe("Outdoor unit id or exact model number"),
+    indoorUnits: z.array(placement).min(1).max(16),
+    totalPipeFt: ft("Single zone / P-Series: line-set length"),
+    mainLineFt: ft("Branch-box systems: outdoor unit to first branch box"),
+    brand: z.enum(["ME", "TRME", "ASME"]).optional().describe("Part numbers: Mitsubishi (default), Trane or American Standard"),
+    connectionRatio: z.union([z.literal(100), z.literal(130)]).optional().describe("R410A multi-zone max connection ratio, percent (default 130)"),
+    location: z.string().max(60).optional().describe("US design location: \"City, ST\" (e.g. \"Denver, CO\", \"Sacramento, CA\") or airport code (KDEN). Fills design temperatures and altitude from NOAA airport records; explicit temperatures below override it"),
+    coolOutdoorDbF: z.number().min(-40).max(130).optional().describe(`Outdoor cooling design dry bulb, °F (default ${DEFAULT_CONDITIONS.coolOutdoorDbF})`),
+    heatOutdoorDbF: z.number().min(-40).max(80).optional().describe("Outdoor heating design dry bulb, °F (the normal winter design temperature); wet bulb is derived with heatRhPct"),
+    heatRhPct: z.number().min(1).max(100).optional().describe("Outdoor relative humidity at the heating design, % (default 72.8)"),
+    heatOutdoorWbF: z.number().min(-40).max(80).optional().describe(`Outdoor heating design wet bulb, °F, if known directly (default ${DEFAULT_CONDITIONS.heatOutdoorWbF})`),
+    altitudeFt: z.number().min(0).max(15000).optional(),
+};
+type DesignArgs = z.infer<z.ZodObject<typeof designShape>>;
+
+interface BuiltDesign {
+  design: SystemDesign;
+  odu: OutdoorUnit;
+  idus: IduPlacement[];
+  conditions: DesignConditions;
+  loc?: DesignLocation;
+}
+
+/** MCP arguments -> the SystemDesign the web app and engine use, or an error message for the AI. */
+function buildDesign(a: DesignArgs, id = "mcp", name = "MCP design"): BuiltDesign | { error: string } {
+  const failWith = (error: string) => ({ error });
+  const odu = findOutdoorUnit(a.outdoorUnit);
+  if (!odu) return failWith(`No outdoor unit matches ${a.outdoorUnit}. Use list_outdoor_units.`);
+  const idus: IduPlacement[] = [];
+  for (const [i, p] of a.indoorUnits.entries()) {
+    const u = findIndoorUnit(p.indoorUnit, { odu });
+    if (!u) return failWith(`No indoor unit matches ${p.indoorUnit}. Use list_indoor_units with this outdoor unit.`);
+    const { indoorUnit: _ref, ...rest } = p;
+    idus.push({ ...rest, key: `idu${i + 1}`, iduId: u.id, room: p.room ?? `Zone ${i + 1}` });
+  }
+  const found = a.location ? findLocation(a.location) : undefined;
+  const loc = found?.loc;
+  if (a.location && !loc)
+    return failWith(
+      found?.candidates?.length
+        ? `"${a.location}" matches several locations: ${found.candidates.map((l) => `${l.city}, ${l.state} (${l.id})`).join("; ")}. Pass one of those or add the state.`
+        : `No design location matches "${a.location}". Use "City, ST" or an airport code (e.g. KDEN), or pass the temperatures directly.`,
+    );
+  const altitudeFt = a.altitudeFt ?? loc?.elevationFt ?? DEFAULT_CONDITIONS.altitudeFt;
+  const heatDb = a.heatOutdoorDbF ?? (a.heatOutdoorWbF == null ? loc?.heatDbF : undefined);
+  const heatWb =
+    a.heatOutdoorWbF ??
+    (a.heatOutdoorDbF != null ? wetBulbFromRh(a.heatOutdoorDbF, a.heatRhPct ?? 72.8, altitudeFt) : loc ? (loc.heatWbF ?? wetBulbFromRh(loc.heatDbF, 72.8, altitudeFt)) : DEFAULT_CONDITIONS.heatOutdoorWbF);
+  const conditions = {
+    ...DEFAULT_CONDITIONS,
+    coolOutdoorDbF: a.coolOutdoorDbF ?? loc?.coolDbF ?? DEFAULT_CONDITIONS.coolOutdoorDbF,
+    heatOutdoorWbF: Math.round(heatWb * 10) / 10,
+    altitudeFt,
+    ...(heatDb != null && { heatOutdoorDbF: heatDb }),
+    ...(loc && { location: loc.id }),
+  };
+  const design: SystemDesign = {
+    id,
+    name,
+    system: odu.system,
+    oduId: odu.id,
+    idus,
+    branchBoxes: [],
+    totalPipeFt: a.totalPipeFt,
+    mainLineFt: a.mainLineFt,
+    settings: { brand: a.brand ?? "ME", connectionRatio: a.connectionRatio ?? 130, conditions },
+  };
+  return { design, odu, idus, conditions, loc };
+}
+
+export interface McpServerOptions {
+  /** Origin the PDF links point at (the request's origin); defaults to site.url. */
+  origin?: string;
+}
+
+export function createMcpServer(opts: McpServerOptions = {}): McpServer {
+  const origin = (opts.origin ?? site.url).replace(/\/+$/, "");
   const server = new McpServer({ name: "minisplit-designer", title: site.name, version: "1.0.0" }, { instructions: INSTRUCTIONS });
 
   server.registerTool(
@@ -107,83 +200,18 @@ export function createMcpServer(): McpServer {
     },
   );
 
-  const placement = z.object({
-    indoorUnit: ref.describe("Indoor unit id or exact model number"),
-    room: z.string().max(60).optional(),
-    pipeLengthFt: ft("Multi-zone: actual line length from the outdoor unit (or branch box) to this unit"),
-    bends: z.number().int().min(0).max(50).optional().describe("Field bends on this unit's line"),
-    heightFt: ft("Height of this unit relative to the outdoor unit (negative = below)"),
-    floorAreaSqFt: sqft("R454B: floor area this unit serves"),
-    installHeightFt: ft("R454B: mounting height of the unit above the floor"),
-    inConditionedSpace: z.boolean().optional().describe("R454B coil units (multi-position, cased coil): installed inside the conditioned space?"),
-    installedRoomSqFt: sqft("R454B coil units: floor area of the room the unit sits in (closet, attic)"),
-    controller: z.string().max(40).optional().describe("Controller model; leave out for the default"),
-    wifiAdapter: z.string().max(40).optional(),
-  });
-
   server.registerTool(
     "evaluate_design",
     {
       title: "Check a system and build the BOM",
       description: "Check a ductless system: pass/fail with reasons, bill of materials (units, controllers, required accessories, line sets), pipe sizes, additional refrigerant charge, corrected capacity and R454B checks.",
-      inputSchema: {
-        outdoorUnit: ref.describe("Outdoor unit id or exact model number"),
-        indoorUnits: z.array(placement).min(1).max(16),
-        totalPipeFt: ft("Single zone / P-Series: line-set length"),
-        mainLineFt: ft("Branch-box systems: outdoor unit to first branch box"),
-        brand: z.enum(["ME", "TRME", "ASME"]).optional().describe("Part numbers: Mitsubishi (default), Trane or American Standard"),
-        connectionRatio: z.union([z.literal(100), z.literal(130)]).optional().describe("R410A multi-zone max connection ratio, percent (default 130)"),
-        location: z.string().max(60).optional().describe("US design location: \"City, ST\" (e.g. \"Denver, CO\", \"Sacramento, CA\") or airport code (KDEN). Fills design temperatures and altitude from NOAA airport records; explicit temperatures below override it"),
-        coolOutdoorDbF: z.number().min(-40).max(130).optional().describe(`Outdoor cooling design dry bulb, °F (default ${DEFAULT_CONDITIONS.coolOutdoorDbF})`),
-        heatOutdoorDbF: z.number().min(-40).max(80).optional().describe("Outdoor heating design dry bulb, °F (the normal winter design temperature); wet bulb is derived with heatRhPct"),
-        heatRhPct: z.number().min(1).max(100).optional().describe("Outdoor relative humidity at the heating design, % (default 72.8)"),
-        heatOutdoorWbF: z.number().min(-40).max(80).optional().describe(`Outdoor heating design wet bulb, °F, if known directly (default ${DEFAULT_CONDITIONS.heatOutdoorWbF})`),
-        altitudeFt: z.number().min(0).max(15000).optional(),
-      },
+      inputSchema: designShape,
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async (a) => {
-      const odu = findOutdoorUnit(a.outdoorUnit);
-      if (!odu) return fail(`No outdoor unit matches ${a.outdoorUnit}. Use list_outdoor_units.`);
-      const idus: IduPlacement[] = [];
-      for (const [i, p] of a.indoorUnits.entries()) {
-        const u = findIndoorUnit(p.indoorUnit, { odu });
-        if (!u) return fail(`No indoor unit matches ${p.indoorUnit}. Use list_indoor_units with this outdoor unit.`);
-        const { indoorUnit: _ref, ...rest } = p;
-        idus.push({ ...rest, key: `idu${i + 1}`, iduId: u.id, room: p.room ?? `Zone ${i + 1}` });
-      }
-      const found = a.location ? findLocation(a.location) : undefined;
-      const loc = found?.loc;
-      if (a.location && !loc)
-        return fail(
-          found?.candidates?.length
-            ? `"${a.location}" matches several locations: ${found.candidates.map((l) => `${l.city}, ${l.state} (${l.id})`).join("; ")}. Pass one of those or add the state.`
-            : `No design location matches "${a.location}". Use "City, ST" or an airport code (e.g. KDEN), or pass the temperatures directly.`,
-        );
-      const altitudeFt = a.altitudeFt ?? loc?.elevationFt ?? DEFAULT_CONDITIONS.altitudeFt;
-      const heatDb = a.heatOutdoorDbF ?? (a.heatOutdoorWbF == null ? loc?.heatDbF : undefined);
-      const heatWb =
-        a.heatOutdoorWbF ??
-        (a.heatOutdoorDbF != null ? wetBulbFromRh(a.heatOutdoorDbF, a.heatRhPct ?? 72.8, altitudeFt) : loc ? (loc.heatWbF ?? wetBulbFromRh(loc.heatDbF, 72.8, altitudeFt)) : DEFAULT_CONDITIONS.heatOutdoorWbF);
-      const conditions = {
-        ...DEFAULT_CONDITIONS,
-        coolOutdoorDbF: a.coolOutdoorDbF ?? loc?.coolDbF ?? DEFAULT_CONDITIONS.coolOutdoorDbF,
-        heatOutdoorWbF: Math.round(heatWb * 10) / 10,
-        altitudeFt,
-        ...(heatDb != null && { heatOutdoorDbF: heatDb }),
-        ...(loc && { location: loc.id }),
-      };
-      const design: SystemDesign = {
-        id: "mcp",
-        name: "MCP design",
-        system: odu.system,
-        oduId: odu.id,
-        idus,
-        branchBoxes: [],
-        totalPipeFt: a.totalPipeFt,
-        mainLineFt: a.mainLineFt,
-        settings: { brand: a.brand ?? "ME", connectionRatio: a.connectionRatio ?? 130, conditions },
-      };
+      const built = buildDesign(a);
+      if ("error" in built) return fail(built.error);
+      const { design, odu, idus, conditions, loc } = built;
       let evaluation;
       try {
         evaluation = evaluate(design);
@@ -198,6 +226,50 @@ export function createMcpServer(): McpServer {
         ...result,
         controllerOptions: Object.fromEntries(Object.entries(controllers).map(([k, v]) => [k, v.map((c) => c.model)])),
         optionalAccessories: Object.fromEntries(Object.entries(accessoryOptions).map(([k, v]) => [k, v.filter((o) => !o.required).map((o) => `${o.model}: ${o.description}`)])),
+        note: NOTE,
+      });
+    },
+  );
+
+  server.registerTool(
+    "export_design_pdf",
+    {
+      title: "Export systems as a PDF submittal",
+      description:
+        "Make a PDF for one or more systems: one submittal-style page per system (equipment, design conditions, pass/fail with issues, branch box and port assignments, piping, line-set takeoff, additional charge, corrected capacity, electrical, efficiency, BOM and items not checked), with a cover page and summary table when there is more than one. Each system takes the same inputs as evaluate_design. Returns a link that renders the PDF when opened. Nothing is stored; the inputs, job name and address travel inside the link, so anyone with it can read them.",
+      inputSchema: {
+        job: z.string().max(120).optional().describe("Job name or number for the header, e.g. \"Vu Residence (1105)\""),
+        address: z.string().max(200).optional().describe("Site address for the header"),
+        preparedBy: z.string().max(80).optional(),
+        systems: z
+          .array(z.object({ name: z.string().max(80).optional().describe("System name, e.g. \"Upstairs\""), ...designShape }))
+          .min(1)
+          .max(MAX_PDF_SYSTEMS),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async (a) => {
+      const built: BuiltDesign[] = [];
+      for (const [i, s] of a.systems.entries()) {
+        const { name, ...args } = s;
+        const b = buildDesign(args, `s${i + 1}`, name?.trim() || `System ${i + 1}`);
+        if ("error" in b) return fail(`System ${i + 1}${name ? ` (${name})` : ""}: ${b.error}`);
+        built.push(b);
+      }
+      const payload = encodePdfRequest({ job: a.job, address: a.address, preparedBy: a.preparedBy, date: new Date().toISOString().slice(0, 10), systems: built.map((b) => b.design) });
+      if (payload.length > MAX_LINK_PAYLOAD) return fail("These systems are too large for one PDF link. Export them in two or more PDFs.");
+      const summary = built.map((b) => {
+        let status = "unknown";
+        try {
+          status = evaluate(b.design).status;
+        } catch {}
+        return { name: b.design.name, outdoorUnit: b.odu.model, indoorUnits: b.idus.length, status };
+      });
+      return json({
+        url: `${origin}${appPath("/api/pdf")}?d=${payload}`,
+        pages: built.length > 1 ? "cover page + one section per system" : "one section",
+        systems: summary,
+        privacy: "The job name, address and inputs are inside the link. Share it only with people who should see them.",
         note: NOTE,
       });
     },

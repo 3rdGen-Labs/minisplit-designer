@@ -12,7 +12,7 @@ import { checkMulti, multiCompatible } from "./mxz";
 import { checkSingle, isDefaultIdu, singleCompatible } from "./single";
 import { applyBrand, systemSpecs } from "./specs";
 
-const SYSTEM_NAME = { MandS: "M & S-Series", P: "P-Series", MXZ: "MXZ multi-zone", MXZSM: "Smart Multi" } as const;
+export const SYSTEM_NAME = { MandS: "M & S-Series", P: "P-Series", MXZ: "MXZ multi-zone", MXZSM: "Smart Multi" } as const;
 
 export function isCompatible(odu: OutdoorUnit, idu: IndoorUnit): boolean {
   return odu.system === "MandS" || odu.system === "P" ? singleCompatible(odu, idu) : multiCompatible(odu, idu);
