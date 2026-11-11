@@ -1,7 +1,8 @@
 import "server-only";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { iduById, indoorUnits, oduById, outdoorUnits } from "./catalog";
+import { iduById, indoorUnits, outdoorUnits } from "./catalog";
+import { findIndoorUnit, findOutdoorUnit } from "./lookup";
 import { DEFAULT_CONDITIONS, type IduPlacement, type SystemDesign } from "./design";
 import { evaluate, isCompatible } from "./engine";
 import { site } from "./site";
@@ -36,8 +37,6 @@ const ref = z.union([z.number().int(), z.string().max(40)]);
 const json = (data: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] });
 const fail = (message: string) => ({ content: [{ type: "text" as const, text: message }], isError: true });
 
-const findOdu = (r: number | string) => (typeof r === "number" ? oduById.get(r) : outdoorUnits.find((u) => u.model.toUpperCase() === r.trim().toUpperCase()));
-const findIdu = (r: number | string) => (typeof r === "number" ? iduById.get(r) : indoorUnits.find((u) => u.model.toUpperCase() === r.trim().toUpperCase()));
 const offered = (status: string, legacy?: boolean) => status === "current" || (legacy && status === "legacy");
 
 const NOTE = ["Independent tool, not affiliated with Mitsubishi Electric. Verify against current manufacturer documentation before quoting, ordering or installing.", site.mcp.note].filter(Boolean).join(" ");
@@ -94,7 +93,7 @@ export function createMcpServer(): McpServer {
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async (a) => {
-      const odu = a.outdoorUnit == null ? undefined : findOdu(a.outdoorUnit);
+      const odu = a.outdoorUnit == null ? undefined : findOutdoorUnit(a.outdoorUnit);
       if (a.outdoorUnit != null && !odu) return fail(`No outdoor unit matches ${a.outdoorUnit}. Use list_outdoor_units.`);
       const q = a.query?.toLowerCase();
       const t = a.type?.toLowerCase();
@@ -144,11 +143,11 @@ export function createMcpServer(): McpServer {
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async (a) => {
-      const odu = findOdu(a.outdoorUnit);
+      const odu = findOutdoorUnit(a.outdoorUnit);
       if (!odu) return fail(`No outdoor unit matches ${a.outdoorUnit}. Use list_outdoor_units.`);
       const idus: IduPlacement[] = [];
       for (const [i, p] of a.indoorUnits.entries()) {
-        const u = findIdu(p.indoorUnit);
+        const u = findIndoorUnit(p.indoorUnit, { odu });
         if (!u) return fail(`No indoor unit matches ${p.indoorUnit}. Use list_indoor_units with this outdoor unit.`);
         const { indoorUnit: _ref, ...rest } = p;
         idus.push({ ...rest, key: `idu${i + 1}`, iduId: u.id, room: p.room ?? `Zone ${i + 1}` });
