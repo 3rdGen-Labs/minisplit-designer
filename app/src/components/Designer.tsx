@@ -19,6 +19,8 @@ import { rhFromWetBulb, wetBulbFromRh } from "@/lib/psychro.mjs";
 import GuidedTutorial, { DEFAULT_TUTORIAL, readTutorialPreferences, saveTutorialPreferences, type TutorialPreferences } from "./GuidedTutorial";
 import { issueDestination, type PropertyDestination } from "@/lib/issue-navigation";
 import { DEFAULT_CONDITIONS } from "@/lib/design";
+import { parseProject, projectFileName, toProjectFile, type Project } from "@/lib/project-file";
+import { allowedEmbedOrigins, EMBED_SOURCE, embedHost, readHostMessage, type DesignerMessage, type SystemSummary } from "@/lib/embed";
 import type {
   Brand,
   CapacityResult,
@@ -45,12 +47,6 @@ const SYSTEM_LABEL: Record<SystemKey, string> = {
 
 const STORAGE_KEY = "zonespec.project.v1";
 const DISCLAIMER_KEY = "zonespec.disclaimer.v1";
-
-interface Project {
-  name: string;
-  systems: SystemDesign[];
-  settings?: ProjectSettings;
-}
 
 const DEFAULT_SETTINGS: ProjectSettings = { brand: "ME", connectionRatio: 130 };
 
@@ -195,25 +191,64 @@ export default function Designer({ palette }: { palette: Palette }) {
       setNotice({ kind: "error", text: "Import failed. Check your connection and try again." });
     }
   };
+  const openProjectFile = async (file: File) => {
+    let parsed: ReturnType<typeof parseProject>;
+    try {
+      parsed = parseProject(JSON.parse(await file.text()));
+    } catch {
+      parsed = { ok: false, error: "This isn't a Mini-Split Designer project file." };
+    }
+    if (!parsed.ok) return setNotice({ kind: "error", text: parsed.error });
+    const empty = project.systems.every((sys) => sys.oduId == null && !sys.idus.length);
+    if (!empty && !confirm(`Replace this project with ${parsed.project.name}?`)) return;
+    setProject(parsed.project);
+    setActiveId(parsed.project.systems[0].id);
+    setSelection(null);
+    setNotice({ kind: "ok", text: `Opened ${file.name}.` });
+  };
   const [loaded, setLoaded] = useState(false);
+  // Set when an allowed host page embeds the designer (see lib/embed.ts); the host keeps the project then.
+  const [embed, setEmbed] = useState<{ host: string; ready: boolean } | null>(null);
+  const hostProject = useRef<Project | null>(null);
 
   useEffect(() => {
-    const saved = loadProject();
-    if (saved?.systems?.length) {
-      setProject({ ...saved, name: saved.name === "New project" ? "Project 1" : saved.name });
-      setActiveId(saved.systems[0].id);
-    }
+    const host = window.parent !== window ? embedHost(window.location.search, allowedEmbedOrigins(site.embed.allowedOrigins)) : null;
     const preferences = readTutorialPreferences();
     setTutorialPreferences(preferences);
     try {
       const accepted = !!localStorage.getItem(DISCLAIMER_KEY);
       setDisclaimerAccepted(accepted);
       if (!accepted) setWorkspaceDialog("disclaimer");
-      else if (preferences.autoShow) setTutorialStep(0);
+      else if (preferences.autoShow && !host) setTutorialStep(0);
     } catch {
       setWorkspaceDialog("disclaimer");
     }
-    setLoaded(true);
+    if (!host) {
+      const saved = loadProject();
+      if (saved?.systems?.length) {
+        setProject({ ...saved, name: saved.name === "New project" ? "Project 1" : saved.name });
+        setActiveId(saved.systems[0].id);
+      }
+      setLoaded(true);
+      return;
+    }
+    // Embedded: the host page sends the project and saves each change; the browser's saved project is untouched.
+    setEmbed({ host, ready: false });
+    const onMessage = (event: MessageEvent) => {
+      if (event.source !== window.parent || event.origin !== host) return;
+      const message = readHostMessage(event.data);
+      if (!message) return;
+      const parsed = parseProject(message.project);
+      if (!parsed.ok) return setNotice({ kind: "error", text: parsed.error });
+      hostProject.current = parsed.project;
+      setProject(parsed.project);
+      setActiveId(parsed.project.systems[0].id);
+      setSelection(null);
+      setEmbed({ host, ready: true });
+    };
+    window.addEventListener("message", onMessage);
+    window.parent.postMessage({ source: EMBED_SOURCE, type: "ready" } satisfies DesignerMessage, host);
+    return () => window.removeEventListener("message", onMessage);
   }, []);
 
   useEffect(() => {
@@ -446,6 +481,24 @@ export default function Designer({ palette }: { palette: Palette }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [selection, active.id, picker, blocked, workspaceDialog, updateSystem]);
 
+  // Embedded: send each edit to the host (not the project it just sent), with a model summary for its lists.
+  const embedTarget = embed?.ready ? embed.host : null;
+  useEffect(() => {
+    if (!embedTarget || project === hostProject.current) return;
+    const timer = setTimeout(() => {
+      const odus = new Map(palette.odus.map((o) => [o.id, o.model]));
+      const idus = new Map(palette.idus.map((i) => [i.id, i.model]));
+      const summary: SystemSummary[] = project.systems.map((s) => ({
+        name: s.name,
+        outdoorUnit: s.oduId != null ? odus.get(s.oduId) : undefined,
+        indoorUnits: s.idus.map((p) => idus.get(p.iduId) ?? "?"),
+        status: evals[s.id]?.oduId === s.oduId ? evals[s.id]?.status : undefined,
+      }));
+      window.parent.postMessage({ source: EMBED_SOURCE, type: "change", project, summary } satisfies DesignerMessage, embedTarget);
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [project, evals, embedTarget, palette]);
+
   const projectBom = useMemo(() => mergeBom(project.systems.map((s) => evals[s.id]).filter(Boolean)), [project.systems, evals]);
 
   return (
@@ -455,6 +508,9 @@ export default function Designer({ palette }: { palette: Palette }) {
           onOpenSettings={() => setWorkspaceDialog("settings")}
           onTutorial={startTutorial}
           onImport={importDsb}
+          onOpenFile={openProjectFile}
+          onSaveFile={() => saveProjectFile(project)}
+          embedded={!!embed}
           onAddSystem={addSystem}
           onExport={() => downloadCsv(project, evals)}
           onPdf={async () => {
@@ -754,7 +810,7 @@ export default function Designer({ palette }: { palette: Palette }) {
             try { localStorage.setItem(DISCLAIMER_KEY, new Date().toISOString()); } catch {}
             setDisclaimerAccepted(true);
             setWorkspaceDialog(null);
-            if (!disclaimerAccepted && tutorialPreferences.autoShow) setTutorialStep(0);
+            if (!disclaimerAccepted && tutorialPreferences.autoShow && !embed) setTutorialStep(0);
           }}
         />
       )}
@@ -791,6 +847,9 @@ function Toolbar(props: {
   onOpenSettings: () => void;
   onTutorial: () => void;
   onImport: (f: File) => void;
+  onOpenFile: (f: File) => void;
+  onSaveFile: () => void;
+  embedded: boolean;
   onPdf: () => void;
   onAddSystem: () => void;
   onExport: () => void;
@@ -799,6 +858,7 @@ function Toolbar(props: {
 }) {
   const menu = useRef<HTMLDetailsElement>(null);
   const file = useRef<HTMLInputElement>(null);
+  const projectFile = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const closeOutside = (event: PointerEvent) => {
       if (menu.current && !menu.current.contains(event.target as Node)) menu.current.open = false;
@@ -844,12 +904,19 @@ function Toolbar(props: {
             <button onClick={() => action(props.onExport)}><HeaderIcon name="export" />Export CSV</button>
             <button onClick={() => action(props.onPdf)}><HeaderIcon name="pdf" />Download PDF</button>
             <div className="my-1 border-t border-[var(--line-soft)]" />
-            <button onClick={() => action(props.onReset)}><HeaderIcon name="new" />New project</button>
+            <button onClick={() => action(props.onSaveFile)}><HeaderIcon name="export" />Save project file</button>
+            <button onClick={() => action(() => projectFile.current?.click())}><HeaderIcon name="import" />Open project file</button>
+            {!props.embedded && <button onClick={() => action(props.onReset)}><HeaderIcon name="new" />New project</button>}
           </div>
         </details>
         <input ref={file} type="file" className="hidden" aria-label="Import DSB file" onChange={(e) => {
           const selected = e.target.files?.[0];
           if (selected) props.onImport(selected);
+          e.target.value = "";
+        }} />
+        <input ref={projectFile} type="file" accept=".json,application/json" className="hidden" aria-label="Open project file" onChange={(e) => {
+          const selected = e.target.files?.[0];
+          if (selected) props.onOpenFile(selected);
           e.target.value = "";
         }} />
         <button className="toolbar-button tutorial-button" onClick={props.onTutorial} aria-label="Tutorial" title="View tutorial"><HeaderIcon name="tutorial" /><span className="tutorial-label">Tutorial</span></button>
@@ -2510,6 +2577,16 @@ function downloadCsv(project: Project, evals: Record<string, Evaluation>) {
   a.download = `${project.name.replace(/[^\w-]+/g, "_") || "mini-split"}-bom.csv`;
   a.click();
   URL.revokeObjectURL(a.href);
+}
+
+/** The project as a JSON file (lib/project-file.ts) the designer can open again. */
+function saveProjectFile(project: Project) {
+  const blob = new Blob([JSON.stringify(toProjectFile(project), null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = projectFileName(project.name);
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
 }
 
 /** Submittal PDF from the server; nothing is stored. Returns an error message, or undefined once the download starts. */
