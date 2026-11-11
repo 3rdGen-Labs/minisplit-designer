@@ -73,6 +73,7 @@ Edit **`app/src/lib/site.ts`** and restart the dev server or rebuild your deploy
 - Change `name` and `owner` to your app and operator names.
 - Set `header.enabled` to `false` to remove the top-left logo and its divider. Otherwise change its name, URL, and logo path.
 - Set `business.enabled` to `false` to remove the bottom-right business card. Otherwise replace its name, description, URL, link label, and logo.
+- `business.pdfLogo` is the logo in the black PDF header, drawn in white. Use a path-only SVG (no transforms) or a PNG; leave it `""` to use `business.logo`. With `business.enabled` off, the PDF uses the header logo, or `name` in text.
 - Set both `credits.enabled` and `credits.secondaryEnabled` to `false` to remove the optional footer credits, or replace their text and links.
 
 Put your logo files in `app/public/brand/` and use paths such as `/brand/your-logo.svg`. Logo paths in this configuration are local public assets; do not enter a full remote image URL. The code adds any configured site prefix automatically. Header and business logo sizes are styled in `app/src/app/globals.css` (`.labs-logo` and `.company-logo`).
