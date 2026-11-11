@@ -142,7 +142,6 @@ function frame(req: PdfRequest, date: string, logo: () => Logo | undefined) {
     header(page: PDFPage, l: Layout) {
       const top = l.pageHeight;
       page.drawRectangle({ x: 0, y: top - BAND, width: l.pageWidth, height: BAND, color: C.brand });
-      page.drawRectangle({ x: 0, y: top - BAND - 2.5, width: l.pageWidth, height: 2.5, color: C.pipe });
       const lg = logo();
       const h = 36;
       let x = l.left;
@@ -200,7 +199,7 @@ function tiles(l: Layout, items: Tile[]) {
     l.box(x, top, w, h, { fill: C.group, border: C.lineSoft, radius: 5 });
     l.page.drawRectangle({ x, y: top - h + 6, width: 2.5, height: h - 12, color: t.color ?? C.accent });
     l.draw(l.fit(t.label.toUpperCase(), 6, w - 18, true), x + 10, top - 13, 6, { bold: true, color: C.muted });
-    l.draw(l.fit(t.value, 13, w - 18, true), x + 10, top - 30, 13, { bold: true, color: t.color ?? C.ink });
+    l.draw(l.fit(t.value, 13, w - 18, true), x + 10, top - 30, 13, { bold: true, color: C.ink });
     if (t.sub) l.draw(l.fit(t.sub, 6.5, w - 18), x + 10, top - 42, 6.5, { color: C.muted });
   });
   l.y = top - h;
@@ -349,12 +348,12 @@ function diagram({ l, art }: Ctx, x: Evaluated) {
         if (bw >= 110) {
           l.image(img, bx + 6, boxTop - 5, 34, BOX_H - 10);
           const tx = bx + 46;
-          l.draw(`BRANCH BOX ${bi + 1}`, tx, boxTop - 14, 5.8, { bold: true, color: C.pipe });
+          l.draw(`BRANCH BOX ${bi + 1}`, tx, boxTop - 14, 5.8, { bold: true, color: C.muted });
           l.draw(l.fit(b.model, 8, bw - 52, true), tx, boxTop - 26, 8, { bold: true });
           l.draw(`${b.ports} ports`, tx, boxTop - 37, 6.5, { color: C.muted });
         } else {
           l.image(img, bx, boxTop - 4, bw, 20);
-          l.drawCentered(`BOX ${bi + 1} · ${b.ports} PORTS`, bcx, boxTop - 32, 5.5, { bold: true, color: C.pipe });
+          l.drawCentered(`BOX ${bi + 1} · ${b.ports} PORTS`, bcx, boxTop - 32, 5.5, { bold: true, color: C.muted });
           l.drawCentered(l.fit(b.model, 6.5, bw - 6, true), bcx, boxTop - 41, 6.5, { bold: true });
         }
       });
@@ -424,7 +423,7 @@ function cover(ctx: Ctx, req: PdfRequest, date: string, systems: Evaluated[]) {
     { label: "Indoor units", value: String(sum((x) => x.design.idus.length)), sub: "zones, all systems" },
     { label: "Cooling at design", value: btu(sum((x) => x.ev.capacity?.cooling?.systemBtu)), sub: allCap("cooling") ? "Btu/h, all systems" : "Btu/h, systems calculated" },
     { label: "Heating at design", value: btu(sum((x) => x.ev.capacity?.heating?.systemBtu)), sub: allCap("heating") ? "Btu/h, all systems" : "Btu/h, systems calculated" },
-    { label: "Line set", value: lineFt ? `${btu(lineFt)} ft` : "-", sub: "takeoff, all sizes", color: C.pipe },
+    { label: "Line set", value: lineFt ? `${btu(lineFt)} ft` : "-", sub: "takeoff, all sizes" },
   ]);
 
   l.heading("System summary", 110);
@@ -535,11 +534,11 @@ function systemSection(ctx: Ctx, x: Evaluated, index: number, total: number, bom
   const s = ev.summary;
   const pctTxt = s?.connectedPct != null ? ` (${Math.round(s.connectedPct)}%)` : "";
   tiles(l, [
-    { label: "Connected", value: s ? btu(s.connectedBtu) : "-", sub: s ? `of ${btu(s.oduBtu)} Btu/h${pctTxt}` : "Btu/h indoor", color: C.accent },
-    { label: "Cooling at design", value: btu(cap?.cooling?.systemBtu), sub: cap?.cooling?.limitedByOdu ? "Btu/h, outdoor limited" : "Btu/h", color: C.accent },
-    { label: "Heating at design", value: btu(cap?.heating?.systemBtu), sub: cap?.heating?.limitedByOdu ? "Btu/h, outdoor limited" : "Btu/h", color: C.bad },
-    { label: "Added charge", value: ev.charge ? `${Math.round(ev.charge.additionalOz * 10) / 10} oz` : "-", sub: ev.charge ? (ev.charge.additionalOz >= 16 ? oz(ev.charge.additionalOz).replace(/^.*\(|\)$/g, "") : odu?.refrigerant) : "not calculated", color: C.pipe },
-    { label: "Outdoor MCA / MOCP", value: ev.specs?.odu.mca || ev.specs?.odu.mocp ? `${ev.specs?.odu.mca ?? "-"} / ${ev.specs?.odu.mocp ?? "-"} A` : "-", sub: ev.specs?.odu.power ?? "", color: C.odu },
+    { label: "Connected", value: s ? btu(s.connectedBtu) : "-", sub: s ? `of ${btu(s.oduBtu)} Btu/h${pctTxt}` : "Btu/h indoor" },
+    { label: "Cooling at design", value: btu(cap?.cooling?.systemBtu), sub: cap?.cooling?.limitedByOdu ? "Btu/h, outdoor limited" : "Btu/h" },
+    { label: "Heating at design", value: btu(cap?.heating?.systemBtu), sub: cap?.heating?.limitedByOdu ? "Btu/h, outdoor limited" : "Btu/h" },
+    { label: "Added charge", value: ev.charge ? `${Math.round(ev.charge.additionalOz * 10) / 10} oz` : "-", sub: ev.charge ? (ev.charge.additionalOz >= 16 ? oz(ev.charge.additionalOz).replace(/^.*\(|\)$/g, "") : odu?.refrigerant) : "not calculated" },
+    { label: "Outdoor MCA / MOCP", value: ev.specs?.odu.mca || ev.specs?.odu.mocp ? `${ev.specs?.odu.mca ?? "-"} / ${ev.specs?.odu.mocp ?? "-"} A` : "-", sub: ev.specs?.odu.power ?? "" },
   ]);
 
   // Diagram

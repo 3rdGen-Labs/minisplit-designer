@@ -40,7 +40,7 @@ export type Logo = { kind: "svg"; paths: string[]; width: number; height: number
 
 /** The business logo from site.ts: SVG paths (drawn as vectors in any color) or a PNG. */
 export async function embedLogo(doc: PDFDocument): Promise<Logo | undefined> {
-  const src = site.business.enabled ? site.business.logo : site.header.enabled ? site.header.logo : "";
+  const src = site.business.enabled ? site.business.pdfLogo || site.business.logo : site.header.enabled ? site.header.logo : "";
   if (!src || /^https?:/.test(src)) return undefined;
   const bytes = read(path.join(process.cwd(), "public", src.replace(/^\/+/, "")));
   if (!bytes) return undefined;
