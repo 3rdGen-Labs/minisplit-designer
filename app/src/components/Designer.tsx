@@ -457,6 +457,11 @@ export default function Designer({ palette }: { palette: Palette }) {
           onImport={importDsb}
           onAddSystem={addSystem}
           onExport={() => downloadCsv(project, evals)}
+          onPdf={async () => {
+            setNotice({ kind: "ok", text: "Making the PDF…" });
+            const error = await downloadPdf(project, settings);
+            setNotice(error ? { kind: "error", text: error } : null);
+          }}
           onCopy={() => copyBom(projectBom)}
           onReset={() => {
             if (!confirm("Clear this project?")) return;
@@ -763,13 +768,14 @@ export default function Designer({ palette }: { palette: Palette }) {
 
 /* ---------- toolbar ---------- */
 
-type HeaderIconName = "actions" | "import" | "copy" | "export" | "new" | "tutorial" | "settings";
+type HeaderIconName = "actions" | "import" | "copy" | "export" | "pdf" | "new" | "tutorial" | "settings";
 function HeaderIcon({ name }: { name: HeaderIconName }) {
   const paths: Record<HeaderIconName, React.ReactNode> = {
     actions: <><path d="M4 7h16M4 12h16M4 17h16" /></>,
     import: <><path d="M12 3v12m-4-4 4 4 4-4M4 16v5h16v-5" /></>,
     copy: <><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h3"/></>,
     export: <><path d="M12 15V3m-4 4 4-4 4 4M4 16v5h16v-5"/></>,
+    pdf: <><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Zm0 0v6h6M12 11v6m-3-3 3 3 3-3"/></>,
     new: <><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Zm0 0v6h6M8 15h8m-4-4v8"/></>,
     tutorial: <><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 4.1 1.9c-1 .6-1.6 1.1-1.6 2.6M12 17h.01"/></>,
     settings: <><path d="m9 3-.6 2.2-2 .9-2-.6-2 3.4 1.5 1.6v2.3L2.4 15l2 3.4 2-.6 2 .9.6 2.3h4l.6-2.3 2-.9 2 .6 2-3.4-1.5-1.7V11l1.5-1.6-2-3.4-2 .6-2-.9L13 3Z"/><circle cx="11" cy="12" r="3"/></>,
@@ -785,6 +791,7 @@ function Toolbar(props: {
   onOpenSettings: () => void;
   onTutorial: () => void;
   onImport: (f: File) => void;
+  onPdf: () => void;
   onAddSystem: () => void;
   onExport: () => void;
   onCopy: () => void;
@@ -835,6 +842,7 @@ function Toolbar(props: {
             <button onClick={() => action(() => file.current?.click())}><HeaderIcon name="import" />Import DSB</button>
             <button onClick={() => action(props.onCopy)}><HeaderIcon name="copy" />Copy BOM</button>
             <button onClick={() => action(props.onExport)}><HeaderIcon name="export" />Export CSV</button>
+            <button onClick={() => action(props.onPdf)}><HeaderIcon name="pdf" />Download PDF</button>
             <div className="my-1 border-t border-[var(--line-soft)]" />
             <button onClick={() => action(props.onReset)}><HeaderIcon name="new" />New project</button>
           </div>
@@ -2502,6 +2510,27 @@ function downloadCsv(project: Project, evals: Record<string, Evaluation>) {
   a.download = `${project.name.replace(/[^\w-]+/g, "_") || "mini-split"}-bom.csv`;
   a.click();
   URL.revokeObjectURL(a.href);
+}
+
+/** Submittal PDF from the server; nothing is stored. Returns an error message, or undefined once the download starts. */
+async function downloadPdf(project: Project, settings: ProjectSettings): Promise<string | undefined> {
+  if (!project.systems.some((s) => s.oduId != null)) return "Add an outdoor unit before making the PDF.";
+  try {
+    const res = await fetch(appPath("/api/pdf"), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      // The viewer's own date, not the server's.
+      body: JSON.stringify({ job: project.name, date: new Date().toLocaleDateString("en-CA"), systems: project.systems.map((s) => ({ ...s, settings })) }),
+    });
+    if (!res.ok) return ((await res.json().catch(() => ({}))) as { error?: string }).error ?? "The PDF could not be made.";
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(await res.blob());
+    a.download = `${project.name.replace(/[^\w-]+/g, "_") || "mini-split"}-submittal.pdf`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  } catch {
+    return "The PDF could not be made. Check your connection and try again.";
+  }
 }
 
 function copyBom(lines: Evaluation["bom"]) {

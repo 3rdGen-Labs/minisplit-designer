@@ -8,8 +8,8 @@ MCP (Model Context Protocol) lets an AI client discover tools, send structured a
 | --- | --- |
 | URL | `https://designer.3rdgen.io/api/mcp` (your own deployment: `https://YOUR-HOST/api/mcp`, plus `NEXT_PUBLIC_BASE_PATH` if set) |
 | Transport | Streamable HTTP, stateless, JSON responses |
-| Auth | None. The tools are read-only and expose the same data as the public web app |
-| Limits | 256 KB request body; 1–16 indoor units per evaluation; list results capped at 100 outdoor / 150 indoor rows. The reference deployment also rate-limits per IP at the firewall |
+| Auth | None. The tools are read-only, store nothing, and expose the same data as the public web app |
+| Limits | 256 KB request body; 1–16 indoor units per evaluation; 1–12 systems per PDF; list results capped at 100 outdoor / 150 indoor rows. The reference deployment also rate-limits per IP at the firewall |
 
 No AI model runs inside the server; your client supplies the AI.
 
@@ -27,6 +27,7 @@ No AI model runs inside the server; your client supplies the AI.
 | `list_outdoor_units` | Optional system, refrigerant, cooling range, model/name query, legacy toggle | Matching outdoor units with capacities, refrigerant and indoor-unit limits |
 | `list_indoor_units` | Optional outdoor unit (id or model), system, unit type, size, query, legacy toggle | Indoor units, filtered to those that connect to the given outdoor unit |
 | `evaluate_design` | Outdoor unit, 1–16 indoor units (line length, bends, height, R454B room inputs, controller), single-zone line length, branch-box main line, brand, connection ratio, design location (California city or airport code) or design temperatures | Pass/fail/incomplete with reasons, BOM, piping, additional refrigerant charge, corrected capacity, R454B checks, controller and accessory options, and the rules left unchecked |
+| `export_design_pdf` | Optional job name, address and preparer, plus 1–12 systems, each with an optional name and the same inputs as `evaluate_design` | A link to a submittal PDF (a cover summary for several systems, then one section per system), with each system's result |
 
 Example `evaluate_design` arguments:
 
@@ -40,6 +41,12 @@ Example `evaluate_design` arguments:
 }
 ```
 
+### PDF links
+
+`export_design_pdf` stores nothing. The link it returns is `/api/pdf?d=…`, where `d` is the request itself (compressed JSON). Opening the link re-runs the checks and draws the PDF, so a later catalog or rules update can change the result. The job name, address and design are readable by anyone who has the link; don't put anything in it you wouldn't email. Links longer than 12,000 characters are refused; split very large jobs. Add `&download=1` to save instead of view.
+
+The web app's **Project actions → Download PDF** posts the open project to `POST /api/pdf` and downloads the file.
+
 The server instructions tell the AI not to invent line lengths, heights or floor areas. Missing inputs leave checks incomplete and are listed in the result. A passing result is a planning estimate, not manufacturer approval.
 
 ## Code
@@ -47,7 +54,9 @@ The server instructions tell the AI not to invent line lengths, heights or floor
 | File | Responsibility |
 | --- | --- |
 | `app/src/app/api/mcp/route.ts` | HTTP route; body-size cap; creates a transport and server per request |
-| `app/src/lib/mcp.ts` | Tool definitions (Zod schemas), model lookup, calls into the catalog and engine |
+| `app/src/lib/mcp.ts` | Tool definitions (Zod schemas), calls into the catalog and engine |
+| `app/src/lib/lookup.ts` | Model-number lookup; when a model is listed under several systems, picks the record that connects to the outdoor unit |
+| `app/src/app/api/pdf/route.ts`, `app/src/lib/pdf/` | PDF route, request schema and link encoding, page layout and rendering (pdf-lib, standard Helvetica). The header uses the logo from `site.ts` (a path-only SVG is drawn as vectors, or a PNG); unit artwork lives in `lib/pdf/assets/`, rebuilt with `python3 design/pdf-assets.py` |
 | `app/src/lib/site.ts` | `site.mcp.note`: the optional line appended to each evaluation result (the reference deployment uses it for a short 3rdGen note). Set it to `""` when you rebrand |
 
 To keep the endpoint off your own deployment, delete `app/src/app/api/mcp/`.

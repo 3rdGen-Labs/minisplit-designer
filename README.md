@@ -48,12 +48,13 @@ The production build downloads Geist fonts from Google. Allow outbound access du
 
 | Component | Location | Purpose |
 | --- | --- | --- |
-| Designer | `app/src/components/Designer.tsx` | Equipment selection, layout, properties, issues, BOM, CSV export, and branding |
+| Designer | `app/src/components/Designer.tsx` | Equipment selection, layout, properties, issues, BOM, CSV and PDF export, and branding |
 | Workspace and walkthrough | `app/src/components/DesignSplit.tsx`, `GuidedTutorial.tsx` | Resizable panels and guided introduction |
 | Shared types | `app/src/lib/design.ts` | Input design and evaluation output contracts |
 | Catalog adapter | `app/src/lib/catalog.ts` | Reads generated JSON and normalizes model records |
 | Rules engine | `app/src/lib/engine/` | Compatibility, piping, controls, accessories, charge, A2L checks, capacity estimates, and BOM |
 | Evaluation API | `POST /api/evaluate` | Calls the same server-side engine used by the app |
+| Submittal PDF | `POST /api/pdf`, `GET /api/pdf?d=`, `app/src/lib/pdf/` | Branded PDF with the business logo, unit artwork and a piping diagram per system (equipment, checks, piping, charge, capacity, electrical, BOM); nothing is stored. Artwork PNGs are made from `app/public/units` by `design/pdf-assets.py` |
 | Project import | `POST /api/import-dsb`, `app/src/lib/dsb-import.ts` | Reads an uploaded Access-format DSB project using `mdb-reader` |
 | Equipment data | `app/src/data/*.json` | Bundled equipment data used by the engine; see the release notes for its status |
 | Site configuration | `app/src/lib/site.ts` | Name, logos, business card, footer credits, and path helper |
@@ -72,6 +73,7 @@ Edit **`app/src/lib/site.ts`** and restart the dev server or rebuild your deploy
 - Change `name` and `owner` to your app and operator names.
 - Set `header.enabled` to `false` to remove the top-left logo and its divider. Otherwise change its name, URL, and logo path.
 - Set `business.enabled` to `false` to remove the bottom-right business card. Otherwise replace its name, description, URL, link label, and logo.
+- `business.pdfLogo` is the logo in the black PDF header, drawn in white. Use a path-only SVG (no transforms) or a PNG; leave it `""` to use `business.logo`. With `business.enabled` off, the PDF uses the header logo, or `name` in text.
 - Set both `credits.enabled` and `credits.secondaryEnabled` to `false` to remove the optional footer credits, or replace their text and links.
 
 Put your logo files in `app/public/brand/` and use paths such as `/brand/your-logo.svg`. Logo paths in this configuration are local public assets; do not enter a full remote image URL. The code adds any configured site prefix automatically. Header and business logo sizes are styled in `app/src/app/globals.css` (`.labs-logo` and `.company-logo`).
@@ -131,7 +133,9 @@ Try asking:
 
 The AI looks up the units, runs the same checks as the designer and answers with pass/fail, line sets, the additional charge and the BOM. It asks for line lengths, heights and room sizes instead of guessing them.
 
-Tools: `list_outdoor_units`, `list_indoor_units` and `evaluate_design`. See the [MCP guide](docs/MCP.md) for details and self-hosting.
+Ask for a PDF and it returns a link to a submittal PDF for one or more systems. Nothing is saved: the link carries the job, so anyone with it can read it.
+
+Tools: `list_outdoor_units`, `list_indoor_units`, `evaluate_design` and `export_design_pdf`. See the [MCP guide](docs/MCP.md) for details and self-hosting.
 
 ## Contributing
 

@@ -32,6 +32,8 @@ export const site = {
     enabled: true,
     name: "3rdGen Building Systems",
     logo: "/brand/3rdgen-building-systems-logo.svg",
+    /** Logo in the PDF header, drawn white on black: a path-only SVG or a PNG. "" uses logo. */
+    pdfLogo: "/brand/3rdgen-logo.svg",
     description: "Heating, cooling, and mechanical systems for Bay Area homes and businesses.",
     url: "https://3rdgen.io/?utm_source=designer&utm_medium=referral&utm_campaign=installation",
     linkLabel: "Visit 3rdGen",
