@@ -2,7 +2,8 @@ import "server-only";
 import { LineCapStyle, type PDFImage, type PDFPage, type RGB } from "pdf-lib";
 import designWeather from "@/data/design-locations.json";
 import { dbVersion, iduById, oduById, str } from "../catalog";
-import { DEFAULT_CONDITIONS, type BomLine, type Evaluation, type Issue, type ModeCapacity, type PipeRun, type SystemDesign, type SystemKey } from "../design";
+import { DEFAULT_CONDITIONS, type BomLine, type Evaluation, type Issue, type ModeCapacity, type PipeRun, type SystemDesign } from "../design";
+import { oduArt } from "../odu-art";
 import { evaluate, SYSTEM_NAME } from "../engine";
 import { inch } from "../engine/lineset";
 import { site } from "../site";
@@ -63,11 +64,6 @@ const IDU_ART: Record<string, [art: string, short: string]> = {
   "Cased Coil": ["cased-coil", "Cased coil"],
   "Floor-Standing Type (Exposed)": ["floor-console", "Floor"],
 };
-function oduArt(model: string, coolingBtu: number, system: SystemKey) {
-  if (system === "MXZSM" || coolingBtu >= 42000 || /^MXZ-8/.test(model)) return "outdoor-2fan";
-  if (coolingBtu <= 15000) return "outdoor-compact";
-  return "outdoor-1fan";
-}
 const boxArt = (ports: number) => (ports === 3 ? "branch-box-3" : "branch-box-5");
 const iduArt = (iduId: number) => IDU_ART[iduById.get(iduId)?.typeName ?? ""]?.[0];
 

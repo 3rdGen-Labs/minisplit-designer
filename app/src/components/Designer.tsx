@@ -37,6 +37,7 @@ import type {
   SystemDesign,
   SystemKey,
 } from "@/lib/design";
+import { oduArt } from "@/lib/odu-art";
 
 const SYSTEM_LABEL: Record<SystemKey, string> = {
   MandS: "M & S-Series",
@@ -80,13 +81,7 @@ const itemLabel = (item: DragItem) => (item.kind === "odu" ? FAMILY_LABEL[item.s
 
 /** Rendered icons (design/blender/units.py). Types without a render get a placeholder. */
 const U = (n: string) => appPath(`/units/${n}.webp`);
-/** Outdoor body by family and size (the data has no cabinet dimensions, so this is by class). */
-function oduIcon(o: { model: string; system: SystemKey; coolingBtu: number }): string {
-  if (o.system === "MXZSM") return U("outdoor-2fan");
-  if (o.coolingBtu >= 42000 || /^MXZ-8/.test(o.model)) return U("outdoor-2fan");
-  if (o.coolingBtu <= 15000) return U("outdoor-compact");
-  return U("outdoor-1fan");
-}
+const oduIcon = (o: { model: string; system: SystemKey; coolingBtu: number }) => U(oduArt(o.model, o.coolingBtu, o.system));
 const FAMILY_ICON: Record<SystemKey, string> = { MandS: U("outdoor-compact"), P: U("outdoor-1fan"), MXZ: U("outdoor-1fan"), MXZSM: U("outdoor-2fan") };
 const branchBoxIcon = (ports: number) => U(ports === 3 ? "branch-box-3" : "branch-box-5");
 const IDU_ICONS: Record<string, string> = {
